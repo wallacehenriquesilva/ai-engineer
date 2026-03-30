@@ -1,6 +1,6 @@
 # AI Engineer
 
-[![CI](https://github.com/wallacesilva/ai-engineer/actions/workflows/ci.yml/badge.svg)](https://github.com/wallacesilva/ai-engineer/actions/workflows/ci.yml)
+[![CI](https://github.com/wallacehenriquesilva/ai-engineer/actions/workflows/ci.yml/badge.svg)](https://github.com/wallacehenriquesilva/ai-engineer/actions/workflows/ci.yml)
 [![Versão](https://img.shields.io/badge/versão-0.1.0-blue)](CHANGELOG.md)
 [![Licença](https://img.shields.io/badge/licença-MIT-green)](LICENSE)
 [![Testes](https://img.shields.io/badge/testes-162%20checks-brightgreen)](#testes)
@@ -55,17 +55,17 @@ Um comando instala tudo: dependências, MCPs, autenticações e knowledge-servic
 
 **Mac / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wallacesilva/ai-engineer/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/wallacehenriquesilva/ai-engineer/main/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/wallacesilva/ai-engineer/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/wallacehenriquesilva/ai-engineer/main/install.ps1 | iex
 ```
 
 **Ou clone e execute:**
 ```bash
-git clone https://github.com/wallacesilva/ai-engineer.git
+git clone https://github.com/wallacehenriquesilva/ai-engineer.git
 cd ai-engineer
 ./install.sh        # Mac/Linux
 .\install.ps1       # Windows
@@ -109,7 +109,7 @@ Do zero ao primeiro uso em 4 passos:
 
 ```bash
 # 1. Instale (uma vez — guia interativo de ~3 minutos)
-git clone https://github.com/wallacesilva/ai-engineer.git
+git clone https://github.com/wallacehenriquesilva/ai-engineer.git
 cd ai-engineer
 ./install.sh
 
@@ -131,7 +131,7 @@ Dependências
   ✓ Docker
 
 Autenticação
-  ✓ GitHub autenticado (wallace-silva-ca)
+  ✓ GitHub autenticado (your-github-user)
 
 MCPs (integrações)
   ✓ GitHub MCP
