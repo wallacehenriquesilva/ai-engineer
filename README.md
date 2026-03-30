@@ -55,7 +55,9 @@ Um comando instala tudo: dependências, MCPs, autenticações e knowledge-servic
 
 **Mac / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wallacehenriquesilva/ai-engineer/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/wallacehenriquesilva/ai-engineer/main/install.sh -o install.sh
+chmod +x install.sh
+./install.sh
 ```
 
 **Windows (PowerShell):**

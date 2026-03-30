@@ -2,7 +2,7 @@
 # install.sh — Setup completo do AI Engineer
 #
 # Uso:
-#   curl -fsSL https://raw.githubusercontent.com/wallacehenriquesilva/ai-engineer/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/wallacehenriquesilva/ai-engineer/main/install.sh -o install.sh && bash install.sh
 #   ./install.sh              # interativo completo
 #   ./install.sh --skills     # apenas instala skills/commands (sem onboarding)
 #   ./install.sh --update     # atualiza para a versão mais recente
@@ -354,9 +354,10 @@ do_update() {
   SOURCE_DIR="$tmpdir"
   install_skills_and_commands
 
-  # Atualiza scripts
+  # Atualiza scripts e templates
   cp -R "$tmpdir/scripts" "$INSTALL_DIR/" 2>/dev/null
   cp -R "$tmpdir/knowledge-service" "$INSTALL_DIR/" 2>/dev/null
+  cp -R "$tmpdir/docs" "$INSTALL_DIR/" 2>/dev/null
   cp "$tmpdir/Makefile" "$INSTALL_DIR/" 2>/dev/null
 
   # Atualiza versão
@@ -407,7 +408,7 @@ fi
 
 echo ""
 echo -e "${BOLD}${CYAN}╔══════════════════════════════════════╗${NC}"
-echo -e "${BOLD}${CYAN}║      AI Engineer — Setup v$VERSION     ║${NC}"
+echo -e "${BOLD}${CYAN}║      AI Engineer — Setup v$VERSION      ║${NC}"
 echo -e "${BOLD}${CYAN}╚══════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${DIM}  Desenvolvedor autônomo para times de engenharia.${NC}"
@@ -497,10 +498,11 @@ log_step 4 "Instalando skills e commands"
 
 install_skills_and_commands
 
-# Copia scripts e configs para INSTALL_DIR
+# Copia scripts, configs e templates para INSTALL_DIR
 mkdir -p "$INSTALL_DIR"
 cp -R "$SOURCE_DIR/scripts"           "$INSTALL_DIR/" 2>/dev/null || true
 cp -R "$SOURCE_DIR/knowledge-service" "$INSTALL_DIR/" 2>/dev/null || true
+cp -R "$SOURCE_DIR/docs"              "$INSTALL_DIR/" 2>/dev/null || true
 cp    "$SOURCE_DIR/Makefile"          "$INSTALL_DIR/" 2>/dev/null || true
 cp    "$SOURCE_DIR/.env.example"      "$INSTALL_DIR/" 2>/dev/null || true
 

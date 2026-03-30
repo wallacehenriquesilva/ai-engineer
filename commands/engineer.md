@@ -67,7 +67,18 @@ CIRCUIT_BREAKER_THRESHOLD=$(grep "Circuit breaker:" CLAUDE.md | grep -oE '[0-9]+
 
 Se alguma variável essencial estiver vazia → encerre informando qual falta.
 
-**Se não existir:** pergunte uma de cada vez:
+**Se não existir:**
+
+Primeiro, verifique se o template existe:
+
+```bash
+test -f ~/.ai-engineer/docs/CLAUDE.md.template && echo "template-ok" || echo "template-missing"
+```
+
+Se `template-missing` → encerre com erro:
+> **Erro:** Template não encontrado em `~/.ai-engineer/docs/CLAUDE.md.template`. Execute o instalador novamente: `curl -fsSL https://raw.githubusercontent.com/wallacehenriquesilva/ai-engineer/main/install.sh -o /tmp/install.sh && bash /tmp/install.sh --skills`
+
+Se `template-ok` → pergunte uma de cada vez:
 
 1. Nome do time
 2. ID do board do Jira
@@ -91,7 +102,7 @@ Se alguma variável essencial estiver vazia → encerre informando qual falta.
 16. Pontuação mínima de clareza (padrão: 15)
 17. Falhas para circuit breaker (padrão: 3)
 
-Gere o `CLAUDE.md` com as respostas usando o template em `docs/CLAUDE.md.template`.
+Gere o `CLAUDE.md` lendo o template de `~/.ai-engineer/docs/CLAUDE.md.template` e substituindo os placeholders pelas respostas coletadas. **NÃO invente um formato próprio — use estritamente o template.**
 
 Para os triggers de pipeline, converta as respostas nos formatos:
 - Automático → `auto`
@@ -130,6 +141,8 @@ Se `--budget <valor>` foi passado, use-o. Senão use `$BUDGET_LIMIT`. Verificar 
 
 Use `jira-integration` com board `$JIRA_BOARD`, label `$AI_LABEL`, status `To Do`. Se nenhuma → encerre.
 
+**Apenas selecione a task — NÃO mova de status, NÃO mude para "Fazendo".** A task permanece em `To Do` até a Etapa 3.
+
 ---
 
 ## Etapa 2 — Avaliar Clareza
@@ -138,15 +151,17 @@ Use `jira-task-clarity`. Sem subtasks → avalie a task. Com subtasks → primei
 
 | Pontuação | Ação |
 |---|---|
-| >= $CONFIDENCE_THRESHOLD | Prossiga |
-| 10 até threshold-1 | Comente suposições no Jira, encerre |
-| 6-9 | Comente perguntas no Jira, encerre |
+| >= $CONFIDENCE_THRESHOLD | Prossiga para Etapa 3 |
+| 10 até threshold-1 | Comente suposições no Jira, encerre (task permanece em `To Do`) |
+| 6-9 | Comente perguntas no Jira, encerre (task permanece em `To Do`) |
 
-Threshold rígido: abaixo = NÃO implementar.
+Threshold rígido: abaixo = NÃO implementar, NÃO mover task.
 
 ---
 
 ## Etapa 3 — Definir Alvo
+
+**Só execute esta etapa se a clareza passou na Etapa 2 (>= $CONFIDENCE_THRESHOLD).**
 
 Sem subtasks → mova task para `Fazendo`. Com subtasks → filtre por `$AI_LABEL`, selecione primeira válida, mova ambas.
 
