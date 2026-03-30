@@ -1,0 +1,43 @@
+# Ambiente
+.env
+!.env.example
+
+# Binarios
+knowledge-service/knowledge-service
+*.exe
+*.out
+
+# Go
+vendor/
+*.test
+
+# Node
+node_modules/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.example.tfvars
+
+# Docker
+docker-compose.override.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code (local)
+.claude/settings.local.json
+CLAUDE.md
+
+# AI Engineer local state
+~/.ai-engineer/

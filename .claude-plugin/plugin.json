@@ -1,0 +1,101 @@
+{
+  "name": "ai-engineer",
+  "version": "0.1.0",
+  "description": "Desenvolvedor autônomo para times de engenharia. Busca tasks do Jira, avalia clareza, implementa código, abre PRs e resolve comentários de revisão.",
+  "author": {
+    "name": "Wallace Silva",
+    "url": "https://github.com/wallacehenriquesilva"
+  },
+  "repository": "https://github.com/wallacehenriquesilva/ai-engineer",
+  "license": "MIT",
+  "engines": {
+    "claude-code": ">=1.0.0"
+  },
+  "skills": [
+    {
+      "name": "jira-integration",
+      "path": "skills/jira-integration/SKILL.md",
+      "description": "Operações no Jira (buscar, mover, comentar)"
+    },
+    {
+      "name": "jira-task-clarity",
+      "path": "skills/jira-task-clarity/SKILL.md",
+      "description": "Avaliação de clareza de tasks"
+    },
+    {
+      "name": "git-workflow",
+      "path": "skills/git-workflow/SKILL.md",
+      "description": "Worktree, commits semânticos, PR e CI"
+    },
+    {
+      "name": "execution-feedback",
+      "path": "skills/execution-feedback/SKILL.md",
+      "description": "Aprendizado compartilhado entre agentes"
+    },
+    {
+      "name": "knowledge-query",
+      "path": "skills/knowledge-query/SKILL.md",
+      "description": "Busca semântica no knowledge base da org"
+    }
+  ],
+  "commands": [
+    {
+      "name": "engineer",
+      "path": "commands/engineer.md",
+      "description": "Implementação automática de task do Jira"
+    },
+    {
+      "name": "pr-resolve",
+      "path": "commands/pr-resolve.md",
+      "description": "Resolução de comentários de revisão de PR"
+    },
+    {
+      "name": "finalize",
+      "path": "commands/finalize.md",
+      "description": "Deploy e merge de PR aprovada"
+    },
+    {
+      "name": "run",
+      "path": "commands/run.md",
+      "description": "Ciclo completo: engineer → pr-resolve → finalize"
+    },
+    {
+      "name": "run-parallel",
+      "path": "commands/run-parallel.md",
+      "description": "Execução paralela de múltiplas tasks"
+    },
+    {
+      "name": "history",
+      "path": "commands/history.md",
+      "description": "Histórico e estatísticas de execuções"
+    }
+  ],
+  "mcpServers": {
+    "github": {
+      "description": "GitHub — PRs, reviews, issues, CI",
+      "required": true,
+      "setup": "gh extension install github/gh-mcp"
+    },
+    "mcp-atlassian": {
+      "description": "Jira + Confluence — tasks, sprints, comentários",
+      "required": true,
+      "setup": "uvx mcp-atlassian (requer email + API token do Atlassian)"
+    },
+    "playwright": {
+      "description": "Browser automation — testes E2E, screenshots",
+      "required": false,
+      "setup": "npx @anthropic/mcp-playwright"
+    },
+    "figma": {
+      "description": "Figma — leitura de designs e tokens",
+      "required": false,
+      "setup": "Requer Figma API token"
+    }
+  },
+  "scripts": {
+    "install": "./install.sh",
+    "update": "./install.sh --update",
+    "setup": "make setup",
+    "test": "make test-all"
+  }
+}
