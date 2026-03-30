@@ -202,10 +202,55 @@ Use `jira-task-clarity`. Sem subtasks → avalie a task. Com subtasks → primei
 | Pontuação | Ação |
 |---|---|
 | >= $CONFIDENCE_THRESHOLD | Prossiga para Etapa 3 |
-| 10 até threshold-1 | Comente suposições no Jira, encerre (task permanece em `To Do`) |
-| 6-9 | Comente perguntas no Jira, encerre (task permanece em `To Do`) |
+| < $CONFIDENCE_THRESHOLD | Vá para Etapa 2.1 |
 
 Threshold rígido: abaixo = NÃO implementar, NÃO mover task.
+
+---
+
+## Etapa 2.1 — Verificar Comentários Anteriores
+
+Clareza abaixo do threshold. Antes de comentar, busque os comentários da task no Jira e verifique se já existe um comentário do agente.
+
+Identifique comentários do agente pelo marcador `[AI Engineer]` no corpo do comentário.
+
+| Situação | Ação |
+|---|---|
+| Sem comentário `[AI Engineer]` | Vá para Etapa 2.2 — comentar pela primeira vez |
+| Com comentário `[AI Engineer]` e **nenhuma resposta depois** (nenhum comentário de outro autor com data posterior) | Encerre silenciosamente — já está aguardando resposta. Não comente novamente. |
+| Com comentário `[AI Engineer]` e **alguém respondeu depois** | Vá para Etapa 2.3 — reavaliar com contexto |
+
+---
+
+## Etapa 2.2 — Comentar Clareza
+
+Primeiro comentário do agente nesta task. Comente no Jira com o marcador obrigatório:
+
+```
+[AI Engineer] Clareza: <PONTUAÇÃO>/18
+
+<conteúdo baseado na pontuação>
+```
+
+| Pontuação | Conteúdo do comentário |
+|---|---|
+| 10 até threshold-1 | Liste as suposições que o agente faria para implementar. Peça confirmação a `$CLARITY_OWNERS`. |
+| 6-9 | Liste as perguntas que precisam ser respondidas antes da implementação. Mencione `$CLARITY_OWNERS`. |
+
+Encerre após comentar (task permanece em `To Do`).
+
+---
+
+## Etapa 2.3 — Reavaliar com Contexto
+
+Alguém respondeu ao comentário do agente. Leia todas as respostas posteriores ao último `[AI Engineer]` e incorpore como contexto adicional à descrição da task.
+
+Reavalie a clareza com `jira-task-clarity`, passando a descrição original + as respostas como contexto.
+
+| Nova pontuação | Ação |
+|---|---|
+| >= $CONFIDENCE_THRESHOLD | Prossiga para Etapa 3 |
+| < $CONFIDENCE_THRESHOLD | Comente novo follow-up com marcador `[AI Engineer]`, referenciando o que ainda falta. Encerre (task permanece em `To Do`). |
 
 ---
 
