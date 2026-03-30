@@ -124,11 +124,11 @@ configure_mcp() {
 }
 
 setup_github_mcp() {
-  # GitHub MCP via gh CLI extension
-  if ! gh extension list 2>/dev/null | grep -q "github/gh-mcp"; then
+  # GitHub MCP via gh CLI extension (shuymn/gh-mcp wraps github/github-mcp-server)
+  if ! gh extension list 2>/dev/null | grep -q "gh-mcp"; then
     log_info "Instalando GitHub MCP..."
-    gh extension install github/gh-mcp 2>/dev/null || {
-      log_warn "Falha ao instalar gh-mcp. Instale manualmente: gh extension install github/gh-mcp"
+    gh extension install shuymn/gh-mcp 2>/dev/null || {
+      log_warn "Falha ao instalar gh-mcp. Instale manualmente: gh extension install shuymn/gh-mcp"
       return 1
     }
   fi

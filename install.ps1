@@ -98,12 +98,12 @@ function Configure-Mcp {
 }
 
 function Setup-GitHubMcp {
-    $ghMcp = gh extension list 2>$null | Select-String "github/gh-mcp"
+    $ghMcp = gh extension list 2>$null | Select-String "gh-mcp"
     if (-not $ghMcp) {
         Log-Info "Instalando GitHub MCP..."
-        gh extension install github/gh-mcp 2>$null
+        gh extension install shuymn/gh-mcp 2>$null
         if ($LASTEXITCODE -ne 0) {
-            Log-Warn "Falha ao instalar gh-mcp. Instale manualmente: gh extension install github/gh-mcp"
+            Log-Warn "Falha ao instalar gh-mcp. Instale manualmente: gh extension install shuymn/gh-mcp"
             return
         }
     }
