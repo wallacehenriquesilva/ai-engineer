@@ -1,0 +1,68 @@
+# AI Engineer — <TEAM_NAME>
+
+## Identidade do time
+
+- **Time:** <TEAM_NAME>
+- **Jira Board:** <JIRA_BOARD>
+- **Jira Project:** <JIRA_PROJECT>
+- **GitHub Org:** <GITHUB_ORG>
+- **GitHub Team:** <GITHUB_TEAM>
+- **Modelo padrão:** claude-opus-4-6
+
+## Critérios de seleção de tasks
+
+- **Label IA:** <AI_LABEL>
+- Apenas tasks com status `To Do` ou `A Fazer`
+- Sem bloqueios em aberto
+
+## Responsáveis por clareza
+
+<CLARITY_OWNERS>
+
+## Ambientes
+
+- Sandbox: `<service>.<SANDBOX_DOMAIN>`
+- Homologação: `<service>.<HOMOLOG_DOMAIN>`
+- Produção: `<service>.<PROD_DOMAIN>`
+
+## CI/CD Pipeline
+
+### Testes
+- Trigger: `<TESTS_TRIGGER>`
+- Validação: `<TESTS_VALIDATION>`
+- Timeout: <TESTS_TIMEOUT> minutos
+- Máximo de tentativas: 2
+
+### Sandbox
+- Trigger: `<SANDBOX_TRIGGER>`
+- Validação: `<SANDBOX_VALIDATION>`
+- Timeout: 15 minutos
+
+### Homolog
+- Trigger: `<HOMOLOG_TRIGGER>`
+- Validação: `<HOMOLOG_VALIDATION>`
+- Timeout: 15 minutos
+
+### Produção
+- Trigger: `<PROD_TRIGGER>`
+- Validação: `<PROD_VALIDATION>`
+- Timeout: 30 minutos
+
+## Guardrails
+
+- Budget limit: $<BUDGET_LIMIT>
+- Confidence threshold: <CONFIDENCE_THRESHOLD>/18
+- Circuit breaker: <CIRCUIT_BREAKER_THRESHOLD> falhas consecutivas
+
+## Padrões de PR
+
+Label obrigatória: `ai-generated`
+
+## Padrões de commit
+
+- `feat:` `fix:` `test:` `docs:` `refactor:` `chore:`
+
+## DORA Metrics
+
+Commit vazio obrigatório antes de qualquer implementação:
+`git commit -m 'chore: initial commit' --allow-empty`
