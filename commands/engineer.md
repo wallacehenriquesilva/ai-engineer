@@ -42,6 +42,56 @@ command -v jq >/dev/null && echo "jq OK" || echo "jq NOT FOUND"
 
 Se `gh` falhar → encerre. Se `jq` falhar → prossiga sem cálculo de custo.
 
+Verifique se `.mcp.json` existe no diretório atual:
+
+```bash
+test -f .mcp.json && echo "mcp-ok" || echo "mcp-missing"
+```
+
+Se `mcp-missing` → verifique se as credenciais existem em `~/.ai-engineer/.env`:
+
+```bash
+test -f ~/.ai-engineer/.env && grep -q "JIRA_API_TOKEN" ~/.ai-engineer/.env && echo "env-ok" || echo "env-missing"
+```
+
+Se `env-ok` → gere `.mcp.json` lendo as variáveis do `.env`:
+
+```bash
+source ~/.ai-engineer/.env
+```
+
+Crie `.mcp.json` com o conteúdo:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "type": "stdio",
+      "command": "gh",
+      "args": ["mcp"]
+    },
+    "mcp-atlassian": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-atlassian"],
+      "env": {
+        "JIRA_URL": "$JIRA_URL",
+        "JIRA_USERNAME": "$JIRA_USERNAME",
+        "JIRA_API_TOKEN": "$JIRA_API_TOKEN",
+        "CONFLUENCE_URL": "$CONFLUENCE_URL",
+        "CONFLUENCE_USERNAME": "$JIRA_USERNAME",
+        "CONFLUENCE_API_TOKEN": "$JIRA_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Substitua as variáveis `$JIRA_URL`, `$JIRA_USERNAME`, `$JIRA_API_TOKEN` e `$CONFLUENCE_URL` pelos valores reais lidos do `.env`. Após criar, informe ao usuário que é necessário reiniciar o Claude Code para carregar os MCPs e **encerre a execução**.
+
+Se `env-missing` → encerre com erro:
+> **Erro:** `.mcp.json` não encontrado e credenciais Jira não configuradas. Execute o instalador: `curl -fsSL https://raw.githubusercontent.com/wallacehenriquesilva/ai-engineer/main/install.sh -o /tmp/install.sh && bash /tmp/install.sh`
+
 ---
 
 ## Etapa 0.1 — Configurações

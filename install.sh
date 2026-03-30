@@ -163,9 +163,8 @@ setup_atlassian_mcp() {
   read -r jira_url
   [ -z "$jira_url" ] && jira_url="https://your-org.atlassian.net"
 
-  prompt "URL do Confluence (ex: https://your-org.atlassian.net/wiki):"
-  read -r confluence_url
-  [ -z "$confluence_url" ] && confluence_url="${jira_url}/wiki"
+  confluence_url="${jira_url}/wiki"
+  log_ok "Confluence URL: $confluence_url"
 
   # Salvar credenciais no .env para o .mcp.json usar
   local env_file="$INSTALL_DIR/.env"
@@ -185,23 +184,32 @@ setup_atlassian_mcp() {
   log_ok "Credenciais salvas no .env"
 
   # Registrar no settings.json global (funciona de qualquer diretório)
-  # Prioridade: uvx > npx > docker
+  # mcp-atlassian é um pacote Python (PyPI) — só funciona com uvx ou docker
   local mcp_cmd="" mcp_args=""
   if command -v uvx >/dev/null 2>&1; then
     mcp_cmd="uvx"
     mcp_args='["mcp-atlassian"]'
     log_info "Usando uvx para MCP Atlassian"
-  elif command -v npx >/dev/null 2>&1; then
-    mcp_cmd="npx"
-    mcp_args='["mcp-atlassian"]'
-    log_info "Usando npx para MCP Atlassian"
   elif command -v docker >/dev/null 2>&1; then
     mcp_cmd="docker"
     mcp_args='["run","-i","--rm","-e","CONFLUENCE_URL","-e","CONFLUENCE_USERNAME","-e","CONFLUENCE_API_TOKEN","-e","JIRA_URL","-e","JIRA_USERNAME","-e","JIRA_API_TOKEN","ghcr.io/sooperset/mcp-atlassian:latest"]'
     log_info "Usando Docker para MCP Atlassian"
   else
-    log_warn "Nenhum runtime encontrado (uvx, npx ou docker). Instale uv: curl -LsSf https://astral.sh/uv/install.sh | sh"
-    return 1
+    log_info "uvx não encontrado — instalando uv..."
+    if curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null; then
+      export PATH="$HOME/.local/bin:$PATH"
+      if command -v uvx >/dev/null 2>&1; then
+        mcp_cmd="uvx"
+        mcp_args='["mcp-atlassian"]'
+        log_ok "uv instalado — usando uvx para MCP Atlassian"
+      else
+        log_warn "uv instalado mas uvx não encontrado no PATH. Reinicie o terminal e execute novamente."
+        return 1
+      fi
+    else
+      log_warn "Falha ao instalar uv. Instale manualmente: curl -LsSf https://astral.sh/uv/install.sh | sh"
+      return 1
+    fi
   fi
 
   local env_json
