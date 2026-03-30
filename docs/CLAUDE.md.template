@@ -56,7 +56,10 @@
 
 ## Padrões de PR
 
-Label obrigatória: `ai-generated`
+Label de participação de AI (adicionada automaticamente pela git-workflow):
+- `ai-first` — todos os commits têm `Co-Authored-By: Claude` (100% AI)
+- `ai-assisted` — alguns commits têm `Co-Authored-By: Claude` (dev + AI)
+- `ai-none` — nenhum commit com co-author AI (100% dev)
 
 ## Padrões de commit
 
