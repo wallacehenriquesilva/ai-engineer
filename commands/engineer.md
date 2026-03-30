@@ -297,15 +297,20 @@ Execute testes. Corrija falhas. Verifique budget após testes.
 
 ## Etapa 11 — PR
 
-**Dry-run:** mostre título e body, pule para Etapa 14. **Normal:** use `git-workflow` — Seção 3. Use o template em `skills/git-workflow/templates/pr-template.md`.
+**Dry-run:** mostre título e body, pule para Etapa 14. **Normal:** use `git-workflow` — Seção 3.
+
+Antes de criar a PR, leia o template e o exemplo:
+
+```bash
+cat ~/.claude/skills/git-workflow/templates/pr-template.md
+cat ~/.claude/skills/git-workflow/examples/pr-example.md
+```
+
+**Obrigatório:** o body da PR deve seguir estritamente a estrutura do template. NÃO invente outro formato. Preencha os placeholders com dados da task e das mudanças implementadas.
 
 ---
 
 ## Etapa 12 — CI
-
-```bash
-gh pr edit <PR-URL> --add-label "ai-generated"
-```
 
 Leia a seção `## CI/CD Pipeline > ### Testes` do `CLAUDE.md` para determinar como acionar e validar o CI:
 
