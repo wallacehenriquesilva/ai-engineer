@@ -140,7 +140,7 @@ O título da PR deve ser em inglês. O body (descrição) deve ser em **PT-BR**.
 
 ### Label obrigatória de participação de AI
 
-Toda PR do time Martech deve ter exatamente uma das labels abaixo. A escolha é baseada nos commits da branch:
+**CRITICAL:** Toda PR deve ter exatamente uma das labels abaixo. A escolha é baseada nos commits da branch:
 
 | Label | Critério |
 |---|---|
@@ -164,6 +164,16 @@ fi
 ```
 
 ### Criar a PR
+
+**CRITICAL:** O título da PR DEVE seguir exatamente o formato `<TASK-ID> | <descricao em ingles>`. Não use prefixos de commit (feat:, fix:), não omita o TASK-ID, e não mude a ordem.
+
+Exemplos:
+- ✅ `PROJ-1234 | Add CNPJ validation endpoint`
+- ✅ `PROJ-567 | Fix duplicated SQS messages on retry`
+- ❌ `feat: add CNPJ validation endpoint`
+- ❌ `Add CNPJ validation endpoint (PROJ-1234)`
+- ❌ `PROJ-1234 - Add CNPJ validation endpoint`
+- ❌ `PROJ-1234: Add CNPJ validation endpoint`
 
 Abra a PR via CLI usando a branch base detectada e a label de AI:
 

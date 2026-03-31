@@ -10,6 +10,7 @@ description: >
   "próxima task de backend", ou mencionar qualquer operação no Jira.
 context: default
 allowed-tools:
+  - Bash
   - mcp__mcp-atlassian__jira_get_board_sprints
   - mcp__mcp-atlassian__jira_search_issues
   - mcp__mcp-atlassian__jira_get_issue
@@ -126,7 +127,68 @@ Quando o usuário quer adicionar um comentário:
 1. Identifique a **chave da task** e o **conteúdo do comentário**.
    - Se o usuário não especificar a task, pergunte qual.
    - Se o contexto da conversa tiver uma task recente, use essa.
-2. Use `jira_add_comment` com a chave e o texto do comentário.
+2. Verifique se o comentário precisa **mencionar** alguém (nomes de pessoas, `$CLARITY_OWNERS`, etc.).
+
+### D1. Comentário sem menções
+
+Use `jira_add_comment` com a chave e o texto do comentário.
+
+### D2. Comentário com menções
+
+O MCP não suporta menções nativas. Use a API REST do Jira com ADF (Atlassian Document Format):
+
+**Passo 1 — Resolver credenciais:**
+
+```bash
+source ~/.ai-engineer/.env
+```
+
+**Passo 2 — Buscar `accountId` de cada pessoa mencionada:**
+
+```bash
+curl -s -u "$JIRA_USERNAME:$JIRA_API_TOKEN" \
+  "$JIRA_URL/rest/api/3/user/search?query=<nome-ou-email>" \
+  | jq '.[0] | {accountId, displayName}'
+```
+
+Se a busca retornar vazio, tente variações (primeiro nome, email, username). Se ainda assim não encontrar, use o nome como texto simples sem menção.
+
+**Passo 3 — Montar o body ADF e enviar:**
+
+```bash
+curl -s -X POST \
+  -u "$JIRA_USERNAME:$JIRA_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  "$JIRA_URL/rest/api/3/issue/<TASK-KEY>/comment" \
+  -d '<ADF_JSON>'
+```
+
+O ADF deve intercalar blocos `text` e `mention`. Exemplo com uma menção:
+
+```json
+{
+  "body": {
+    "type": "doc",
+    "version": 1,
+    "content": [
+      {
+        "type": "paragraph",
+        "content": [
+          { "type": "text", "text": "[AI Engineer] Clareza: 11/18\n\nSuposições listadas acima. " },
+          {
+            "type": "mention",
+            "attrs": { "id": "<accountId>", "text": "@Display Name" }
+          },
+          { "type": "text", "text": " por favor valide." }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Para múltiplas menções, adicione um bloco `mention` para cada pessoa.
+
 3. Confirme: **"Comentário adicionado na task <KEY>."**
 
 ---
@@ -166,4 +228,4 @@ Para um exemplo de saída formatada, veja [examples/task-output.md](examples/tas
 
 - Esta skill apenas consulta e gerencia status/comentários no Jira. Não implementa código.
 - Selecione **somente uma** task na operação "próxima task".
-- Sempre use as ferramentas MCP do Jira — nunca tente acessar a API diretamente.
+- Use as ferramentas MCP do Jira para operações padrão. Use a API REST diretamente (via `curl`) apenas para comentários com menções (Seção D2), que requerem ADF.

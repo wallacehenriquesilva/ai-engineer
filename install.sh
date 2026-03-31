@@ -4,7 +4,7 @@
 # Uso:
 #   curl -fsSL https://raw.githubusercontent.com/wallacehenriquesilva/ai-engineer/main/install.sh -o install.sh && bash install.sh
 #   ./install.sh              # interativo completo
-#   ./install.sh --skills     # apenas instala skills/commands (sem onboarding)
+#   ./install.sh --skills     # apenas instala skills (sem onboarding)
 #   ./install.sh --update     # atualiza para a versão mais recente
 
 set -eo pipefail
@@ -34,7 +34,7 @@ MODE="full"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
 
-if [ -d "$SCRIPT_DIR/skills" ] && [ -d "$SCRIPT_DIR/commands" ]; then
+if [ -d "$SCRIPT_DIR/skills" ]; then
   SOURCE_DIR="$SCRIPT_DIR"
 else
   TMPDIR="$(mktemp -d)"
@@ -66,12 +66,11 @@ check_dependency() {
   fi
 }
 
-install_skills_and_commands() {
+install_skills() {
   local dest_skills="$HOME/.claude/skills"
-  local dest_commands="$HOME/.claude/commands"
   local count=0
 
-  mkdir -p "$dest_skills" "$dest_commands"
+  mkdir -p "$dest_skills"
 
   for skill in "$SOURCE_DIR"/skills/*/; do
     [ -d "$skill" ] || continue
@@ -82,13 +81,19 @@ install_skills_and_commands() {
   done
   log_ok "$count skills instaladas em $dest_skills"
 
-  local cmd_count=0
-  for cmd in "$SOURCE_DIR"/commands/*.md; do
-    [ -f "$cmd" ] || continue
-    cp "$cmd" "$dest_commands/"
-    cmd_count=$((cmd_count + 1))
-  done
-  log_ok "$cmd_count commands instalados em $dest_commands"
+  # Limpa commands legados (migrados para skills)
+  if [ -d "$HOME/.claude/commands" ]; then
+    local legacy_count=0
+    for cmd in "$HOME/.claude/commands"/*.md; do
+      [ -f "$cmd" ] || continue
+      local cmd_name=$(basename "$cmd" .md)
+      if [ -d "$dest_skills/$cmd_name" ]; then
+        rm "$cmd"
+        legacy_count=$((legacy_count + 1))
+      fi
+    done
+    [ "$legacy_count" -gt 0 ] && log_ok "$legacy_count commands legados removidos (migrados para skills)"
+  fi
 }
 
 configure_mcp() {
@@ -360,7 +365,7 @@ do_update() {
 
   # Copia novos arquivos
   SOURCE_DIR="$tmpdir"
-  install_skills_and_commands
+  install_skills
 
   # Atualiza scripts e templates
   cp -R "$tmpdir/scripts" "$INSTALL_DIR/" 2>/dev/null
@@ -404,7 +409,7 @@ fi
 
 if [ "$MODE" = "skills" ]; then
   echo -e "\n${BOLD}${CYAN}AI Engineer — Instalação de Skills${NC}\n"
-  install_skills_and_commands
+  install_skills
   save_version
   echo -e "\n${GREEN}Concluído.${NC}\n"
   exit 0
@@ -502,9 +507,9 @@ setup_atlassian_mcp || true
 
 # ── Step 4: Skills e Commands ────────────────────────────────────────────────
 
-log_step 4 "Instalando skills e commands"
+log_step 4 "Instalando skills"
 
-install_skills_and_commands
+install_skills
 
 # Copia scripts, configs e templates para INSTALL_DIR
 mkdir -p "$INSTALL_DIR"
@@ -544,7 +549,7 @@ echo ""
 
 # Status de cada componente
 echo -e "${BOLD}  Status:${NC}"
-log_ok "Skills e commands instalados"
+log_ok "Skills instaladas"
 
 if jq -e '.mcpServers.github' "$HOME/.claude/settings.json" >/dev/null 2>&1; then
   log_ok "GitHub MCP configurado"
