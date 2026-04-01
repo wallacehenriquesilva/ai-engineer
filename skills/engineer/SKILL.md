@@ -13,6 +13,7 @@ depends-on:
   - init
   - execution-feedback
   - engineer-multi
+  - slack-review
 triggers:
   - user-command: /engineer
   - called-by: run
@@ -127,9 +128,11 @@ BUDGET_LIMIT=$(grep "Budget limit:" CLAUDE.md | grep -oE '[0-9]+\.[0-9]+' || ech
 CONFIDENCE_THRESHOLD=$(grep "Confidence threshold:" CLAUDE.md | grep -oE '[0-9]+' | head -1 || echo "15")
 CIRCUIT_BREAKER_THRESHOLD=$(grep "Circuit breaker:" CLAUDE.md | grep -oE '[0-9]+' | head -1 || echo "3")
 CI_MAX_RETRIES=$(grep "Máximo de tentativas:" CLAUDE.md | grep -oE '[0-9]+' | head -1 || echo "2")
+SLACK_AUTO_REVIEW=$(grep "Slack Auto Review:" CLAUDE.md | awk '{print $NF}' || echo "false")
 ```
 
 Se alguma variável essencial estiver vazia → encerre informando qual falta.
+`$SLACK_AUTO_REVIEW` é opcional — se ausente, assume `false`.
 
 **Se não existir:**
 
@@ -166,6 +169,11 @@ Se `template-ok` → pergunte uma de cada vez:
 16. Pontuação mínima de clareza (padrão: 15)
 17. Falhas para circuit breaker (padrão: 3)
 18. Máximo de tentativas de CI (padrão: 2)
+19. "Deseja notificar reviews no Slack automaticamente?" (S/n, padrão: n)
+    Se sim:
+    - 19a. ID do canal do Slack para reviews (ex: C0APYR0N7B4)
+    - 19b. Mapa de usuários GitHub → Slack User ID (formato: `user.github: U0ABC123`, um por linha, ou Enter para pular)
+    - 19c. Grupos de review por tipo (formato: `backend: @handle`, um por linha, ou Enter para pular. Use `default` como fallback)
 
 Gere o `CLAUDE.md` lendo o template de `~/.ai-engineer/docs/CLAUDE.md.template` e substituindo os placeholders pelas respostas coletadas. **NÃO invente um formato próprio — use estritamente o template.**
 
@@ -180,7 +188,11 @@ Para validação, use os defaults:
 - Sandbox/Homolog → `checks:<nome-do-check-pattern>`
 - Produção → `gh-runs:prod|production|deploy`
 
-Para perguntas 12-18, use o padrão se vazio.
+Para as configurações de Slack:
+- Se Slack habilitado → `Slack Auto Review: true`, preencha canal, user map e groups
+- Se Slack desabilitado → `Slack Auto Review: false`, remova as seções de user map e groups do template
+
+Para perguntas 12-19, use o padrão se vazio.
 
 ---
 
@@ -431,6 +443,23 @@ source scripts/calculate-cost.sh
 source scripts/execution-log.sh
 exec_log_end "PR aberta" "<PR-URL>" "$COST" "$INPUT" "$CACHE_WRITE" "$CACHE_READ" "$OUTPUT"
 ```
+
+---
+
+## Etapa 12.3 — Notificar Review no Slack
+
+Se `$SLACK_AUTO_REVIEW` = `true`:
+
+```
+/slack-review request <PR-URL>
+```
+
+A skill `slack-review` irá:
+- Enviar mensagem no canal configurado (`Slack Review Channel`)
+- Mencionar o grupo de review correto (`Slack Review Groups`) baseado no tipo de mudança
+- Verificar duplicatas antes de enviar
+
+Se `$SLACK_AUTO_REVIEW` = `false` → pule esta etapa.
 
 ---
 

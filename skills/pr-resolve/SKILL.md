@@ -7,6 +7,7 @@ description: >
   Lê configurações do CLAUDE.md do diretório atual. Uso: /pr-resolve <PR-URL>
 depends-on:
   - git-workflow
+  - slack-review
 triggers:
   - user-command: /pr-resolve
   - called-by: run
@@ -34,6 +35,7 @@ Se não existir: **"CLAUDE.md não encontrado. Execute /engineer primeiro."**
 GITHUB_ORG=$(grep "GitHub Org:" CLAUDE.md | awk '{print $NF}')
 SONAR_BOT=$(grep "Bot do SonarQube:" CLAUDE.md | awk '{print $NF}')
 CI_MAX_RETRIES=$(grep "Máximo de tentativas:" CLAUDE.md | grep -oE '[0-9]+' | head -1 || echo "2")
+SLACK_AUTO_REVIEW=$(grep "Slack Auto Review:" CLAUDE.md | awk '{print $NF}' || echo "false")
 ```
 
 ---
@@ -255,7 +257,15 @@ echo "RESULT:TIMEOUT"; exit 2
 
 Se falhar, corrija e repita (máximo `$CI_MAX_RETRIES` tentativas).
 
-Após CI verde, volte ao polling da Etapa 3 para aguardar aprovação.
+Após CI verde:
+
+1. Se `$SLACK_AUTO_REVIEW` = `true`: notifique os revisores que os comentários foram resolvidos:
+   ```
+   /slack-review reply <PR-URL>
+   ```
+   A skill `slack-review` irá responder na thread original mencionando os revisores individualmente.
+
+2. Volte ao polling da Etapa 3 para aguardar aprovação.
 
 ---
 

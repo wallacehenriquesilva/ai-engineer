@@ -8,6 +8,7 @@ description: >
   Lê configurações do CLAUDE.md do diretório atual. Uso: /finalize <PR-URL>
 depends-on:
   - git-workflow
+  - slack-review
 triggers:
   - user-command: /finalize
   - called-by: run
@@ -37,6 +38,7 @@ FIRST_OWNER=$(echo "$CLARITY_OWNERS" | cut -d',' -f1 | xargs)
 SANDBOX_DOMAIN=$(grep "Sandbox:" CLAUDE.md | grep -oE '<service>\.[^ ]*' | sed 's/<service>\.//' || echo "")
 HOMOLOG_DOMAIN=$(grep "Homologação:" CLAUDE.md | grep -oE '<service>\.[^ ]*' | sed 's/<service>\.//' || echo "")
 PROD_DOMAIN=$(grep "Produção:" CLAUDE.md | grep -oE '<service>\.[^ ]*' | sed 's/<service>\.//' || echo "")
+SLACK_AUTO_REVIEW=$(grep "Slack Auto Review:" CLAUDE.md | awk '{print $NF}' || echo "false")
 ```
 
 ---
@@ -152,6 +154,16 @@ A PR está aprovada por um humano, validada em sandbox e homolog. Merge automát
 ```bash
 gh pr merge <PR-URL> --squash --delete-branch
 ```
+
+### Notificar merge no Slack
+
+Se `$SLACK_AUTO_REVIEW` = `true`:
+
+```
+/slack-review reply <PR-URL>
+```
+
+A skill `slack-review` detecta automaticamente que a PR está merged e adiciona o indicador `:merged:` na thread original.
 
 ---
 
