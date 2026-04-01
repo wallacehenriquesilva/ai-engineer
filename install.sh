@@ -76,7 +76,7 @@ install_skills() {
     [ -d "$skill" ] || continue
     local name=$(basename "$skill")
     mkdir -p "$dest_skills/$name"
-    cp -R "$skill"/* "$dest_skills/$name/" 2>/dev/null
+    cp -R "$skill"/* "$dest_skills/$name/" 2>/dev/null || true
     count=$((count + 1))
   done
   log_ok "$count skills instaladas em $dest_skills (Claude Code)"
@@ -92,7 +92,9 @@ install_skills() {
         legacy_count=$((legacy_count + 1))
       fi
     done
-    [ "$legacy_count" -gt 0 ] && log_ok "$legacy_count commands legados removidos (migrados para skills)"
+    if [ "$legacy_count" -gt 0 ]; then
+      log_ok "$legacy_count commands legados removidos (migrados para skills)"
+    fi
   fi
 
   # TODO: Multi-tool support (Copilot, Cursor, Gemini CLI, etc.)
@@ -652,8 +654,15 @@ install_skills
 
 # Copia scripts, configs e templates para INSTALL_DIR
 mkdir -p "$INSTALL_DIR"
+set +e
+log_info "Copiando arquivos para $INSTALL_DIR..."
 cp -R "$SOURCE_DIR/scripts"           "$INSTALL_DIR/" 2>/dev/null || true
-cp -R "$SOURCE_DIR/knowledge-service" "$INSTALL_DIR/" 2>/dev/null || true
+# Copia knowledge-service excluindo binários compilados e caches
+if [ -d "$SOURCE_DIR/knowledge-service" ]; then
+  rsync -a --exclude='knowledge-service' --exclude='*.exe' --exclude='vendor/' \
+    "$SOURCE_DIR/knowledge-service/" "$INSTALL_DIR/knowledge-service/" 2>/dev/null \
+    || cp -R "$SOURCE_DIR/knowledge-service" "$INSTALL_DIR/" 2>/dev/null || true
+fi
 cp -R "$SOURCE_DIR/docs"              "$INSTALL_DIR/" 2>/dev/null || true
 cp    "$SOURCE_DIR/Makefile"          "$INSTALL_DIR/" 2>/dev/null || true
 cp    "$SOURCE_DIR/.env.example"      "$INSTALL_DIR/" 2>/dev/null || true
@@ -664,7 +673,7 @@ log_ok "Arquivos copiados para $INSTALL_DIR"
 
 log_step 5 "Configurando knowledge-service"
 
-setup_gemini_key
+setup_gemini_key || true
 
 # ── Step 6: Knowledge Service ────────────────────────────────────────────────
 
