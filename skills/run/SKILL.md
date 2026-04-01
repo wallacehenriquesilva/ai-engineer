@@ -1,10 +1,17 @@
 ---
 name: run
+version: 1.1.0
 description: >
   Executa o ciclo completo de desenvolvimento de forma autônoma:
   implementa a task, resolve comentários de revisão e finaliza com deploy.
   Invoca engineer → pr-resolve → finalize em sequência.
   Uso: /run
+depends-on:
+  - engineer
+  - pr-resolve
+  - finalize
+triggers:
+  - user-command: /run
 allowed-tools:
   - Bash
   - Read
@@ -38,18 +45,24 @@ O `/engineer` irá:
 - Acionar o CI e aguardar o SonarQube
 - Mover a task para `Em Revisão`
 
-Ao final, capture a **PR-URL** retornada pelo `/engineer` no resumo da Etapa 14.
+Ao final, capture os dados de handoff do output da Etapa 14 do `/engineer` (veja [handoff template](templates/engineer-to-pr-resolve.md)):
+
+```
+TASK_ID, TASK_SUMMARY, PR_URL, REPO_NAME, BRANCH, BASE_BRANCH, WORKTREE_PATH
+```
+
+Também capture: arquivos alterados, decisões técnicas e pontos de atenção.
 
 ### Se `/engineer` encerrar sem PR aberta:
 - Task não encontrada → encerre com: **"Nenhuma task disponível. Ciclo encerrado."**
 - Task sem clareza → encerre com: **"Task comentada com perguntas. Ciclo encerrado até ajuste."**
-- Falha irrecuperável → encerre com o motivo reportado pelo `/engineer`.
+- Falha irrecuperável → preencha o [template de escalação](templates/escalation.md) e encerre.
 
 ---
 
 ## Fase 2 — Revisão
 
-Com a `<PR-URL>` obtida na Fase 1, invoque `/pr-resolve <PR-URL>` e aguarde a conclusão.
+Com a `<PR-URL>` e o contexto de handoff da Fase 1, invoque `/pr-resolve <PR-URL>` e passe as decisões técnicas e pontos de atenção como contexto.
 
 O `/pr-resolve` irá:
 - Monitorar a PR aguardando comentários ou aprovação do time
@@ -57,9 +70,15 @@ O `/pr-resolve` irá:
 - Rodar o CI novamente após cada push
 - Aguardar aprovação final
 
+Ao final, capture os dados de handoff (veja [handoff template](templates/pr-resolve-to-finalize.md)):
+
+```
+Revisores que aprovaram, comentários resolvidos, commits de fix, CI final
+```
+
 ### Se `/pr-resolve` encerrar sem aprovação:
 - Timeout de 24h sem feedback → encerre com: **"PR sem revisão em 24h. Intervenção manual necessária."**
-- Falha de CI irrecuperável → encerre com o motivo reportado.
+- Falha de CI irrecuperável → preencha o [template de escalação](templates/escalation.md) e encerre.
 
 ---
 
@@ -75,7 +94,7 @@ O `/finalize` irá:
 - Acompanhar o deploy em produção
 
 ### Se `/finalize` falhar:
-- Encerre com o motivo reportado e a orientação de intervenção manual.
+- Preencha o [template de escalação](templates/escalation.md) e encerre com orientação de intervenção manual.
 
 ---
 
@@ -98,9 +117,34 @@ Duração total: <tempo desde o início>
 
 ---
 
+## Persistência de Estado entre Fases
+
+Use `execution-log.sh` para persistir handoff state entre skills. Isso permite recuperação se a sessão for interrompida.
+
+```bash
+source scripts/execution-log.sh
+
+# Após Fase 1 (engineer concluído):
+exec_handoff_save "$TASK_ID" "engineer" "pr-resolve" \
+  "pr_url=$PR_URL" "repo=$REPO_NAME" "branch=$BRANCH" \
+  "base_branch=$BASE_BRANCH" "worktree=$WORKTREE_PATH"
+
+# Antes da Fase 2 (recuperar contexto se sessão reiniciou):
+PR_URL=$(exec_handoff_get "$TASK_ID" "pr_url")
+
+# Após Fase 2 (pr-resolve concluído):
+exec_handoff_save "$TASK_ID" "pr-resolve" "finalize" \
+  "pr_url=$PR_URL" "approved_by=$APPROVED_BY" "fix_commits=$FIX_COMMITS"
+
+# Após Fase 3 (ciclo concluído):
+exec_handoff_clean "$TASK_ID"
+```
+
+---
+
 ## Regras
 
 - Nunca pule uma fase — cada uma depende da anterior.
-- Preserve o estado entre fases (especialmente a PR-URL).
-- Em caso de falha em qualquer fase, encerre com clareza e não tente continuar.
+- Persista o estado entre fases via `exec_handoff_save` — não dependa apenas de variáveis em memória.
+- Em caso de falha em qualquer fase, preencha o template de escalação e encerre.
 - As skills individuais (/engineer, /pr-resolve, /finalize) continuam disponíveis para execução isolada.

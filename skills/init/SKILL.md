@@ -1,10 +1,15 @@
 ---
 name: init
+version: 1.0.0
 description: >
   Analisa o repositório atual e gera um CLAUDE.md com convenções, arquitetura,
   comandos e padrões detectados. Usado automaticamente pelo /engineer quando
   um repo não tem CLAUDE.md, ou manualmente para criar/atualizar.
   Uso: /init
+depends-on: []
+triggers:
+  - user-command: /init
+  - called-by: engineer
 allowed-tools:
   - Bash
   - Read

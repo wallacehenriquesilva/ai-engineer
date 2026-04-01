@@ -1,10 +1,22 @@
 ---
 name: engineer
+version: 1.1.0
 description: >
   Busca a próxima task disponível na sprint ativa, avalia clareza,
   implementa, testa, abre PR e move para revisão.
   Lê configurações do CLAUDE.md do diretório atual.
   Se CLAUDE.md não existir, coleta as configurações e o gera automaticamente.
+depends-on:
+  - jira-integration
+  - jira-task-clarity
+  - git-workflow
+  - init
+  - execution-feedback
+  - engineer-multi
+triggers:
+  - user-command: /engineer
+  - called-by: run
+  - called-by: run-parallel
 allowed-tools:
   - Bash
   - Read
@@ -334,6 +346,33 @@ Examine o repo. Salve plano em `.claude/plans/plan-<TASK-ID>.md`: resumo, compon
 ## Etapa 9 — Testar
 
 Execute testes. Corrija falhas. Verifique budget após testes.
+
+---
+
+## Etapa 9.1 — Auto-review (Reality Check)
+
+**Postura:** default é **NEEDS WORK**. Só prossiga se houver evidência concreta de que a implementação está correta. Não assuma que "compilou e testes passaram" é suficiente.
+
+Revise sua própria implementação verificando:
+
+| Critério | Como verificar | Bloqueante? |
+|----------|---------------|-------------|
+| Acceptance criteria atendidos | Compare cada critério da task com o código implementado. Liste: `✅ atendido` ou `❌ não atendido` | Sim |
+| Testes cobrem os cenários | Verifique se há testes para happy path E edge cases descritos na task | Sim |
+| Sem código morto ou debug | Grep por `fmt.Println`, `console.log`, `TODO`, `FIXME`, `HACK` nos arquivos alterados | Sim |
+| Padrões do repo respeitados | Compare com código existente: naming, estrutura, error handling | Não |
+| Sem regressões óbvias | Verifique se algum arquivo existente foi alterado de forma que quebre funcionalidade prévia | Sim |
+
+### Resultado
+
+- **Todos os critérios bloqueantes OK** → prossiga para Etapa 10
+- **Algum critério bloqueante falhou** → corrija antes de prosseguir (máx 2 tentativas de auto-correção)
+- **Falhou após 2 tentativas** → registre como falha e encerre (`exec_log_fail`)
+
+```bash
+# Exemplo de verificação automática de código morto
+git diff --name-only HEAD | xargs grep -n 'fmt\.Println\|console\.log\|TODO\|FIXME\|HACK' || echo "CLEAN"
+```
 
 ---
 

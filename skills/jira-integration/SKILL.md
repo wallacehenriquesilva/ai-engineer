@@ -1,5 +1,6 @@
 ---
 name: jira-integration
+version: 1.0.0
 description: >
   Interage com o Jira para operações em tasks de qualquer board.
   Acione esta skill quando o usuário quiser: buscar a próxima task disponível para implementação,
@@ -8,6 +9,11 @@ description: >
   ou adicionar um comentário em uma task.
   Também acione quando o usuário perguntar "qual a próxima task?", "tem task pra pegar?",
   "próxima task de backend", ou mencionar qualquer operação no Jira.
+depends-on: []
+triggers:
+  - called-by: engineer
+  - called-by: run-parallel
+  - user-command: /jira-integration
 context: default
 allowed-tools:
   - Bash

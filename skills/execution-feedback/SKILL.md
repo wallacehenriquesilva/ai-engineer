@@ -1,11 +1,16 @@
 ---
 name: execution-feedback
+version: 1.0.0
 description: >
   Registra aprendizados de execuções passadas (falhas, padrões de erro, soluções)
   no knowledge-service centralizado e os consulta antes de novas implementações.
   Aprendizados são compartilhados entre todos os agentes do time.
   Acione esta skill quando uma execução falhar para registrar o aprendizado,
   ou antes de iniciar uma implementação para consultar falhas anteriores em repos similares.
+depends-on: []
+triggers:
+  - called-by: engineer
+  - user-command: /execution-feedback
 context: default
 allowed-tools:
   - Bash

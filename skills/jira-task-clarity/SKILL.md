@@ -1,11 +1,16 @@
 ---
 name: jira-task-clarity
+version: 1.0.0
 description: >
   Avalia o grau de clareza e confiança de uma task do Jira antes da implementação.
   Acione esta skill quando quiser saber se uma task está clara o suficiente para ser implementada,
   ou quando o agente precisar decidir se pode prosseguir com segurança.
   Analisa descrição, critérios de aceitação, escopo, contexto técnico, ambiguidades e dependências.
   Quando a task não estiver clara o suficiente, formula perguntas objetivas e as posta como comentário no Jira.
+depends-on: []
+triggers:
+  - called-by: engineer
+  - user-command: /jira-task-clarity
 context: default
 allowed-tools:
   - mcp__mcp-atlassian__jira_get_issue

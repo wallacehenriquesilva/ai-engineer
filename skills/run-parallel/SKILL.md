@@ -1,9 +1,15 @@
 ---
 name: run-parallel
+version: 1.0.0
 description: >
   Executa múltiplas tasks em paralelo, cada uma em um worker isolado.
   Busca N tasks disponíveis na sprint e lança agentes paralelos para implementá-las.
   Uso: /run-parallel [--workers 3]
+depends-on:
+  - engineer
+  - jira-integration
+triggers:
+  - user-command: /run-parallel
 allowed-tools:
   - Bash
   - Read

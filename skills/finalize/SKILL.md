@@ -1,10 +1,16 @@
 ---
 name: finalize
+version: 1.0.0
 description: >
   Finaliza o ciclo de uma task aprovada: valida aprovação da PR, envia para sandbox
   e homolog, gera evidências de funcionamento, move a task no Jira e acompanha
   o deploy em produção após o merge.
   Lê configurações do CLAUDE.md do diretório atual. Uso: /finalize <PR-URL>
+depends-on:
+  - git-workflow
+triggers:
+  - user-command: /finalize
+  - called-by: run
 allowed-tools:
   - Bash
   - Read

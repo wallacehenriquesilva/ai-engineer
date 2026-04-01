@@ -1,10 +1,17 @@
 ---
 name: git-workflow
+version: 1.1.0
 description: >
   Gerencia o fluxo Git completo para implementação de tasks: criação de worktree, branch,
   commits semânticos atômicos, abertura de PR e monitoramento de CI.
   Acione esta skill quando precisar criar uma branch, fazer commits, abrir PR,
   ou acompanhar o resultado dos testes de CI de uma pull request.
+depends-on: []
+triggers:
+  - called-by: engineer
+  - called-by: engineer-multi
+  - called-by: pr-resolve
+  - called-by: finalize
 context: default
 allowed-tools:
   - Bash

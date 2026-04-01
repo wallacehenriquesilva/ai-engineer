@@ -1,10 +1,15 @@
 ---
 name: knowledge-query
+version: 1.0.0
 description: >
   Consulta o knowledge base centralizado da org para encontrar informações
   sobre repositórios, serviços, dependências e padrões arquiteturais.
   Use quando precisar saber em qual repo trabalhar, como um serviço funciona,
   quais endpoints ele expõe, ou quais variáveis de ambiente usa.
+depends-on: []
+triggers:
+  - called-by: engineer
+  - user-command: /knowledge-query
 context: default
 allowed-tools:
   - Bash

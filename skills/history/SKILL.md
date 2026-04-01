@@ -1,9 +1,13 @@
 ---
 name: history
+version: 1.0.0
 description: >
   Exibe o histórico de execuções do AI Engineer com estatísticas de sucesso,
   falhas, custos e duração. Uso: /history [--limit 20] [--status success|failure]
   [--command engineer|pr-resolve|finalize] [--stats] [--days 30]
+depends-on: []
+triggers:
+  - user-command: /history
 allowed-tools:
   - Bash
   - Read

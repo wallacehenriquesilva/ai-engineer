@@ -1,9 +1,14 @@
 ---
 name: engineer-multi
+version: 1.0.0
 description: >
   Fluxo de implementação coordenada para tasks que envolvem 2+ repositórios.
   Carregado sob demanda pelo /engineer quando detecta múltiplos repos.
   Não deve ser chamado diretamente pelo usuário.
+depends-on:
+  - git-workflow
+triggers:
+  - called-by: engineer
 allowed-tools:
   - Bash
   - Read

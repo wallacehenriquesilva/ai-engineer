@@ -1,9 +1,15 @@
 ---
 name: pr-resolve
+version: 1.1.0
 description: >
   Monitora uma PR aberta, aguarda comentários do time de engenharia,
   aplica resoluções, responde revisores e acompanha até a aprovação final.
   Lê configurações do CLAUDE.md do diretório atual. Uso: /pr-resolve <PR-URL>
+depends-on:
+  - git-workflow
+triggers:
+  - user-command: /pr-resolve
+  - called-by: run
 allowed-tools:
   - Bash
   - Read
