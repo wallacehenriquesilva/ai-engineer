@@ -377,7 +377,7 @@ Revise sua própria implementação verificando:
 
 ### Resultado
 
-- **Todos os critérios bloqueantes OK** → prossiga para Etapa 10
+- **Todos os critérios bloqueantes OK** → prossiga para Etapa 9.2
 - **Algum critério bloqueante falhou** → corrija antes de prosseguir (máx 2 tentativas de auto-correção)
 - **Falhou após 2 tentativas** → registre como falha e encerre (`exec_log_fail`)
 
@@ -385,6 +385,85 @@ Revise sua própria implementação verificando:
 # Exemplo de verificação automática de código morto
 git diff --name-only HEAD | xargs grep -n 'fmt\.Println\|console\.log\|TODO\|FIXME\|HACK' || echo "CLEAN"
 ```
+
+---
+
+## Etapa 9.2 — Validação de Segurança
+
+Valide a segurança do código implementado antes de prosseguir para commits.
+
+### 1. Detectar linguagem
+
+```bash
+if [ -f "go.mod" ]; then
+  LANG="go"
+elif [ -f "package.json" ]; then
+  LANG="js"
+elif [ -f "pom.xml" ] || [ -f "build.gradle" ]; then
+  LANG="java"
+elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then
+  LANG="python"
+elif ls *.tf >/dev/null 2>&1; then
+  LANG="terraform"
+else
+  LANG="unknown"
+fi
+```
+
+### 2. Buscar skill de segurança instalada
+
+Procure por skills de segurança na seguinte ordem de prioridade:
+
+```bash
+# 1. Skill específica para a linguagem: security-<lang>
+SECURITY_SKILL=""
+if [ -d "$HOME/.claude/skills/security-$LANG" ]; then
+  SECURITY_SKILL="security-$LANG"
+# 2. Skill genérica: security
+elif [ -d "$HOME/.claude/skills/security" ]; then
+  SECURITY_SKILL="security"
+fi
+```
+
+### 3. Executar validação
+
+**Se encontrou skill de segurança** (`$SECURITY_SKILL` não vazio):
+
+Invoque a skill passando a lista de arquivos alterados:
+
+```
+/$SECURITY_SKILL <lista-de-arquivos-alterados>
+```
+
+A skill de segurança é responsável por analisar e retornar vulnerabilidades encontradas. Se retornar vulnerabilidades bloqueantes → corrija antes de prosseguir (máx 2 tentativas).
+
+**Se NÃO encontrou skill de segurança** → execute checagem básica genérica:
+
+Analise os arquivos alterados (`git diff --name-only`) procurando por:
+
+| Risco | Pattern | Linguagens |
+|-------|---------|------------|
+| Secrets hardcoded | `password\s*=\s*["']`, `api_key\s*=\s*["']`, `secret\s*=\s*["']`, `token\s*=\s*["']` | Todas |
+| SQL injection | Concatenação de strings em queries SQL (ex: `"SELECT.*" +`, `fmt.Sprintf("SELECT`) | Go, Java, Python, JS |
+| Command injection | `exec(`, `os.system(`, `subprocess.call(.*shell=True`, `exec.Command(` com input não sanitizado | Python, Go, JS |
+| XSS | `innerHTML`, `dangerouslySetInnerHTML`, `v-html` com input de usuário | JS |
+| Credenciais em código | `.env` commitado, `AWS_SECRET`, `PRIVATE_KEY` | Todas |
+| Permissões abertas | `0777`, `0666`, `*` em IAM policies | Todas, Terraform |
+
+```bash
+# Checagem genérica de secrets
+git diff --name-only HEAD | xargs grep -inE \
+  'password\s*=\s*["\x27]|api_key\s*=\s*["\x27]|secret\s*=\s*["\x27]|AWS_SECRET|PRIVATE_KEY' \
+  || echo "CLEAN"
+```
+
+### 4. Resultado
+
+| Resultado | Ação |
+|-----------|------|
+| Nenhuma vulnerabilidade encontrada | Prossiga para Etapa 10 |
+| Vulnerabilidades encontradas | Corrija (máx 2 tentativas). Se não conseguir → registre como falha com detalhes do que foi encontrado |
+| Skill de segurança não disponível + checagem básica limpa | Prossiga com aviso: **"Checagem básica de segurança OK. Para análise completa, instale uma skill `security-<lang>`."** |
 
 ---
 
