@@ -27,6 +27,7 @@ Se não existir: **"CLAUDE.md não encontrado. Execute /engineer primeiro."**
 ```bash
 GITHUB_ORG=$(grep "GitHub Org:" CLAUDE.md | awk '{print $NF}')
 SONAR_BOT=$(grep "Bot do SonarQube:" CLAUDE.md | awk '{print $NF}')
+CI_MAX_RETRIES=$(grep "Máximo de tentativas:" CLAUDE.md | grep -oE '[0-9]+' | head -1 || echo "2")
 ```
 
 ---
@@ -246,7 +247,7 @@ done
 echo "RESULT:TIMEOUT"; exit 2
 ```
 
-Se falhar, corrija e repita (máximo 2 tentativas).
+Se falhar, corrija e repita (máximo `$CI_MAX_RETRIES` tentativas).
 
 Após CI verde, volte ao polling da Etapa 3 para aguardar aprovação.
 
@@ -287,4 +288,4 @@ gh pr view <PR-URL> --json reviews \
 - Commits de resolução sempre com prefixo `fix:`.
 - Comentários ambíguos sempre geram pergunta — nunca assuma.
 - Sempre rode os testes antes de cada push.
-- Máximo 2 tentativas de correção de CI.
+- Máximo `$CI_MAX_RETRIES` tentativas de correção de CI (padrão: 2).

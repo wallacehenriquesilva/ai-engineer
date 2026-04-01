@@ -31,7 +31,7 @@
 - Trigger: `<TESTS_TRIGGER>`
 - Validação: `<TESTS_VALIDATION>`
 - Timeout: <TESTS_TIMEOUT> minutos
-- Máximo de tentativas: 2
+- Máximo de tentativas: <CI_MAX_RETRIES>
 
 ### Sandbox
 - Trigger: `<SANDBOX_TRIGGER>`

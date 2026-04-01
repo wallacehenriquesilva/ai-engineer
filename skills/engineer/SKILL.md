@@ -114,6 +114,7 @@ SONAR_BOT=$(grep "Bot do SonarQube:" CLAUDE.md | awk '{print $NF}')
 BUDGET_LIMIT=$(grep "Budget limit:" CLAUDE.md | grep -oE '[0-9]+\.[0-9]+' || echo "5.00")
 CONFIDENCE_THRESHOLD=$(grep "Confidence threshold:" CLAUDE.md | grep -oE '[0-9]+' | head -1 || echo "15")
 CIRCUIT_BREAKER_THRESHOLD=$(grep "Circuit breaker:" CLAUDE.md | grep -oE '[0-9]+' | head -1 || echo "3")
+CI_MAX_RETRIES=$(grep "Máximo de tentativas:" CLAUDE.md | grep -oE '[0-9]+' | head -1 || echo "2")
 ```
 
 Se alguma variável essencial estiver vazia → encerre informando qual falta.
@@ -152,6 +153,7 @@ Se `template-ok` → pergunte uma de cada vez:
 15. Limite de custo USD por execução (padrão: 5.00)
 16. Pontuação mínima de clareza (padrão: 15)
 17. Falhas para circuit breaker (padrão: 3)
+18. Máximo de tentativas de CI (padrão: 2)
 
 Gere o `CLAUDE.md` lendo o template de `~/.ai-engineer/docs/CLAUDE.md.template` e substituindo os placeholders pelas respostas coletadas. **NÃO invente um formato próprio — use estritamente o template.**
 
@@ -166,7 +168,7 @@ Para validação, use os defaults:
 - Sandbox/Homolog → `checks:<nome-do-check-pattern>`
 - Produção → `gh-runs:prod|production|deploy`
 
-Para perguntas 12-17, use o padrão se vazio.
+Para perguntas 12-18, use o padrão se vazio.
 
 ---
 
@@ -372,7 +374,7 @@ Leia a seção `## CI/CD Pipeline > ### Testes` do `CLAUDE.md` para determinar c
 | `checks:<pattern>` | `gh pr checks <PR-URL> --watch` ou poll por checks com nome matching `<pattern>` |
 | `checks:*` | `gh pr checks <PR-URL> --watch` (todos os checks) |
 
-Use `git-workflow` — Seção 4 para correções (máx 2 tentativas, lido do CLAUDE.md).
+Use `git-workflow` — Seção 4 para correções (máx `$CI_MAX_RETRIES` tentativas, lido do CLAUDE.md).
 
 ---
 
@@ -422,7 +424,7 @@ Mova para `Em Revisão`. Comente com PR-URL e custo. Com subtasks: mova subtask;
 - Nunca commite na `main`
 - Nunca force push
 - Reutilize código existente
-- Máximo 2 tentativas de CI
+- Máximo `$CI_MAX_RETRIES` tentativas de CI (padrão: 2)
 - Clareza < threshold = NÃO implementar
 - Budget: verifique após Etapas 8 e 9
 - Circuit breaker: 3+ falhas = parar (exceto --force)
