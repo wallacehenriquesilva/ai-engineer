@@ -25,14 +25,16 @@ Tudo isso sem nenhuma intervenção humana.
 
 ### Problemas que resolve
 
-| Antes | Depois |
-|---|---|
-| Tasks acumulam na sprint sem ninguém pegar | Agente busca automaticamente a próxima task disponível |
-| Implementações fora do padrão do time | Aprende os padrões do repo via `CLAUDE.md` e skills |
-| PRs rejeitadas por falta de testes | Roda testes e corrige falhas antes de abrir a PR |
-| Deploy sem confirmação pode causar incidentes | Merge só acontece com PR aprovada + homolog validada |
-| Mesmo erro acontece em várias execuções | Registra aprendizados e consulta antes de implementar |
-| Cada máquina aprende isolada | Knowledge-service centralizado compartilha entre agentes |
+
+| Antes                                         | Depois                                                   |
+| --------------------------------------------- | -------------------------------------------------------- |
+| Tasks acumulam na sprint sem ninguém pegar    | Agente busca automaticamente a próxima task disponível   |
+| Implementações fora do padrão do time         | Aprende os padrões do repo via `CLAUDE.md` e skills      |
+| PRs rejeitadas por falta de testes            | Roda testes e corrige falhas antes de abrir a PR         |
+| Deploy sem confirmação pode causar incidentes | Merge só acontece com PR aprovada + homolog validada     |
+| Mesmo erro acontece em várias execuções       | Registra aprendizados e consulta antes de implementar    |
+| Cada máquina aprende isolada                  | Knowledge-service centralizado compartilha entre agentes |
+
 
 ### Para quem é?
 
@@ -90,17 +92,349 @@ Aguarda CI passar, corrige falhas (máx 2 tentativas), atualiza o Jira com link 
 
 ---
 
+## Flowchart completo do `/run`
+
+O `/run` orquestra 3 skills em sequência: `engineer → pr-resolve → finalize`. Cada skill tem múltiplas etapas internas com validações e pontos de saída.
+
+```
+/run
+ │
+ ▼
+╔══════════════════════════════════════════════════════════════════════════╗
+║  FASE 1 — /engineer                                                      ║
+║                                                                          ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 0: Pré-cond.  │ gh auth? jq? .mcp.json?                         ║
+║  │          + Config   │ CLAUDE.md → extrai variáveis                    ║
+║  └──────────┬──────────┘                                                 ║
+║             │ falhou? ──────────────────────────────────── ▶ [ENCERRA]   ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 0.2: Circuit  │ >= 3 falhas consecutivas?                       ║
+║  │  Breaker            │                                                 ║
+║  └──────────┬──────────┘                                                 ║
+║             │ ativo? (sem --force) ─────────────────────── ▶ [ENCERRA]   ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 1: Buscar     │ /jira-integration                               ║
+║  │  Task               │ Sprint ativa + label AI + status To Do          ║
+║  └──────────┬──────────┘                                                 ║
+║             │ nenhuma task? ────────────────────────────── ▶ [ENCERRA]   ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 2: Avaliar    │ /jira-task-clarity                              ║
+║  │  Clareza            │ Score 0-18 em 6 dimensões                       ║
+║  └──────────┬──────────┘                                                 ║
+║             │                                                            ║
+║             ├── score >= threshold ──────────────── ▶ Etapa 3            ║
+║             │                                                            ║
+║             └── score < threshold                                        ║
+║                  │                                                       ║
+║                  ├── sem comentário anterior ─ ▶ comenta no Jira         ║
+║                  │                               [ENCERRA]               ║
+║                  ├── com comentário, sem       ─ ▶ [ENCERRA silencioso]  ║
+║                  │   resposta                                            ║
+║                  └── com resposta nova         ─ ▶ reavalia              ║
+║                       │                                                  ║
+║                       ├── agora >= threshold ── ▶ Etapa 3                ║
+║                       └── ainda < threshold ─── ▶ comenta follow-up      ║
+║                                                   [ENCERRA]              ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 3: Definir    │ Mover task → "Fazendo"                          ║
+║  │  Alvo               │ Subtasks: filtra por AI label                   ║
+║  └──────────┬──────────┘                                                 ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 4: Localizar  │ find repo ou gh clone                           ║
+║  │  Repos              │                                                 ║
+║  └──────────┬──────────┘                                                 ║
+║             │                                                            ║
+║             ├── 1 repo ────────────────────────── ▶ Etapa 5              ║
+║             └── 2+ repos ─────────────────── ▶ /engineer-multi           ║
+║             │                                     (fluxo paralelo)       ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 5: Setup      │ CLAUDE.md do repo (ou /init)                    ║
+║  │  Worktree           │ /worktree create                                ║
+║  └──────────┬──────────┘                                                 ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 6: DORA       │ git commit --allow-empty                        ║
+║  │  + Exec Log         │ exec_log_start                                  ║
+║  └──────────┬──────────┘                                                 ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 6.2: Buscar   │ /execution-feedback                             ║
+║  │  Aprendizados       │ knowledge-service → avisos para o plano         ║
+║  └──────────┬──────────┘                                                 ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 7: Planejar   │ Examina repo, cria plano em                     ║
+║  │                     │ .claude/plans/plan-<TASK-ID>.md                 ║
+║  └──────────┬──────────┘                                                 ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 8: Implement. │ Segue o plano                                   ║
+║  │          + Budget   │ Verifica custo após implementar                 ║
+║  └──────────┬──────────┘                                                 ║
+║             │ budget > limite? ─────────────────────────── ▶ [ENCERRA]   ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 9: Testar     │ Roda testes, corrige falhas                     ║
+║  │          + Budget   │ Verifica custo após testes                      ║
+║  └──────────┬──────────┘                                                 ║
+║             │ budget > limite? ─────────────────────────── ▶ [ENCERRA]   ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 9.1: Auto-    │ Default: NEEDS WORK                             ║
+║  │  Review (Reality    │ Valida: acceptance criteria, testes,            ║
+║  │  Check)             │ código morto, padrões, regressões               ║
+║  └──────────┬──────────┘                                                 ║
+║             │ bloqueante falhou (2x)? ─────────────────── ▶ [ENCERRA]    ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 10: Commits   │ /git-workflow Seção 2                           ║
+║  │                     │ Commits atômicos + Co-Authored-By               ║
+║  └──────────┬──────────┘                                                 ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 11: PR        │ /git-workflow Seção 3                           ║
+║  │                     │ Título: <TASK-ID> | <desc>                      ║
+║  │                     │ Template + label AI                             ║
+║  └──────────┬──────────┘                                                 ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 12: CI        │ Trigger conforme CLAUDE.md                      ║
+║  │                     │ Valida SonarQube/checks                         ║
+║  │                     │ Máx $CI_MAX_RETRIES tentativas                  ║
+║  └──────────┬──────────┘                                                 ║
+║             │ falhou após retries? ────────────────────── ▶ [ENCERRA]    ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 12.3: Slack   │ Se Slack Auto Review = true:                    ║
+║  │  (opcional)         │ /slack-review request <PR-URL>                  ║
+║  │                     │ 📨 Envia pedido de review no canal              ║
+║  └──────────┬──────────┘                                                 ║
+║             ▼                                                            ║
+║  ┌─────────────────────┐                                                 ║
+║  │ Etapa 13: Jira      │ Move task → "Em Revisão"                        ║
+║  │                     │ Comenta com PR-URL + custo                      ║
+║  └──────────┬──────────┘                                                 ║
+║             ▼                                                            ║
+║  │ Etapa 14: Output    │ TASK_ID, PR_URL, BRANCH, REPO                   ║
+║                                                                          ║
+╚═══════════════════════════════════════════════════════════════╤══════════╝
+                                                                │
+          exec_handoff_save("engineer" → "pr-resolve")          │
+                                                                ▼
+╔════════════════════════════════════════════════════════════════════════╗
+║  FASE 2 — /pr-resolve <PR-URL>                                         ║
+║                                                                        ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 0: Config     │ CLAUDE.md → GITHUB_ORG, SONAR_BOT,            ║
+║  │                     │ CI_MAX_RETRIES                                ║
+║  └──────────┬──────────┘                                               ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 1: Contexto   │ gh pr view → state, reviews, comments         ║
+║  │  da PR              │ gh pr diff → arquivos alterados               ║
+║  └──────────┬──────────┘                                               ║
+║             │ merged/closed? ──────────────────────────── ▶ [ENCERRA]  ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 2: Worktree   │ Localiza repo + checkout da branch            ║
+║  └──────────┬──────────┘                                               ║
+║             ▼                                                          ║
+║  ┌─────────────────────────────────────────────────────┐               ║
+║  │ Etapa 3: Polling (60s, timeout 24h)                 │               ║
+║  │                                                     │               ║
+║  │  ┌──────────────────┐                               │               ║
+║  │  │ Verifica reviews │                               │               ║
+║  │  │ + comentários    │                               │               ║
+║  │  └────────┬─────────┘                               │               ║
+║  │           │                                         │               ║
+║  │           ├── APPROVED ──────────────────── ▶ Etapa 7               ║
+║  │           ├── HAS_FEEDBACK ──────────────── ▶ Etapa 4               ║
+║  │           └── nada ──── aguarda 60s ── ▶ (loop)     │               ║
+║  │                                                     │               ║
+║  │  timeout 24h? ──────────────────────────── ▶ [ENCERRA]              ║
+║  └─────────────────────────────────────────────────────┘               ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 4: Analisar   │ 4.1: Coleta IDs dos comentários               ║
+║  │  Comentários        │ 4.2: Busca threads via GraphQL                ║
+║  │                     │ 4.3: Classifica cada comentário               ║
+║  │                     │   → código | dúvida | ambíguo | sugestão      ║
+║  └──────────┬──────────┘                                               ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 5: Agir       │ CRITICAL: reply DIRETO no comentário          ║
+║  │                     │                                               ║
+║  │  código  → implementa + commit + reply + resolve thread             ║
+║  │  dúvida  → reply direto (NÃO resolve)                               ║
+║  │  ambíguo → reply pedindo clareza (NÃO resolve)                      ║
+║  │            volta ao polling Etapa 3                                 ║
+║  │  sugestão → avalia, implementa ou explica                           ║
+║  └──────────┬──────────┘                                               ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 6: Push + CI  │ git push                                      ║
+║  │                     │ Aguarda SonarQube/checks                      ║
+║  │                     │ Máx $CI_MAX_RETRIES tentativas                ║
+║  └──────────┬──────────┘                                               ║
+║             │ falhou? ─────────────────────────────────── ▶ [ENCERRA]  ║
+║             │                                                          ║
+║             ├── Se Slack Auto Review = true:                           ║
+║             │   /slack-review reply <PR-URL>                           ║
+║             │   📨 Notifica revisores que comentários foram resolvidos ║
+║             │                                                          ║
+║             └── volta ao polling Etapa 3                               ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 7: Aprovação  │ Lista revisores que aprovaram                 ║
+║  │  Final              │                                               ║
+║  └──────────┬──────────┘                                               ║
+║             ▼                                                          ║
+║  │ Etapa 8: Output     │ PR_URL, aprovadores, comments resolvidos      ║
+║                                                                        ║
+╚═══════════════════════════════════════════════════════════════╤════════╝
+                                                                │
+          exec_handoff_save("pr-resolve" → "finalize")          │
+                                                                ▼
+╔════════════════════════════════════════════════════════════════════════╗
+║  FASE 3 — /finalize <PR-URL>                                           ║
+║                                                                        ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 0: Config     │ CLAUDE.md → ORG, domínios, triggers           ║
+║  └──────────┬──────────┘                                               ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 1: Validar PR │ Aberta? Aprovada?                             ║
+║  │                     │ Extrai TASK_ID, serviço, tipo                 ║
+║  └──────────┬──────────┘                                               ║
+║             │ sem aprovação? ──────────────────────────── ▶ [ENCERRA]  ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 2: Deploy     │ Trigger conforme CLAUDE.md                    ║
+║  │  Sandbox            │ (skip → pula)                                 ║
+║  └──────────┬──────────┘                                               ║
+║             │ falhou? ─────────────────────────────────── ▶ [ENCERRA]  ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 3: Validar    │ curl endpoint sandbox                         ║
+║  │  Sandbox            │ (domínio vazio → pula)                        ║
+║  └──────────┬──────────┘                                               ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 4: Deploy     │ Trigger conforme CLAUDE.md                    ║
+║  │  Homolog            │ (skip → pula)                                 ║
+║  └──────────┬──────────┘                                               ║
+║             │ falhou? ─────────────────────────────────── ▶ [ENCERRA]  ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 5: Validar    │ curl endpoint homolog                         ║
+║  │  Homolog + Evidênc. │ Salva evidence-<TASK-ID>.md                   ║
+║  └──────────┬──────────┘                                               ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 6: Jira       │ Comenta evidências                            ║
+║  │                     │ Move task → "Done"                            ║
+║  └──────────┬──────────┘                                               ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 7: Merge PR   │ gh pr merge --squash --delete-branch          ║
+║  │                     │                                               ║
+║  │  Se Slack Auto Review = true:                                       ║
+║  │  /slack-review reply <PR-URL>                                       ║
+║  │  📨 Notifica na thread que PR foi merged                            ║
+║  └──────────┬──────────┘                                               ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 8: Deploy     │ Aguarda pipeline de produção                  ║
+║  │  Produção           │ Poll gh run list                              ║
+║  └──────────┬──────────┘                                               ║
+║             │                                                          ║
+║             ├── sucesso ───────────────────── ▶ Etapa 9                ║
+║             │                                                          ║
+║             └── falhou                                                 ║
+║                  │                                                     ║
+║                  ▼                                                     ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 8.1: Rollback │ git revert HEAD                               ║
+║  │  Automático         │ Abre PR de rollback                           ║
+║  │                     │ Merge + aguarda deploy                        ║
+║  │                     │ Jira → "Fazendo"                              ║
+║  └──────────┬──────────┘                                               ║
+║             └─────────────────────────────────────────── ▶ [ENCERRA]   ║
+║             ▼                                                          ║
+║  ┌─────────────────────┐                                               ║
+║  │ Etapa 9: Validar    │ curl endpoint produção                        ║
+║  │  Produção + Evidênc.│ Salva evidence-<TASK-ID>-prod.md              ║
+║  └──────────┬──────────┘                                               ║
+║             ▼                                                          ║
+║  │ Etapa 10: Output    │ Task, PR, ambientes, status Jira              ║
+║                                                                        ║
+╚═══════════════════════════════════════════════════════════════╤════════╝
+                                                                │
+          exec_handoff_clean(TASK_ID)                           │
+                                                                ▼
+                                                     ┌──────────────────┐
+                                                     │  ✅ CONCLUÍDO    │
+                                                     │  Task: Done      │
+                                                     │  PR: Merged      │
+                                                     │  Prod: Validado  │
+                                                     └──────────────────┘
+```
+
+### Legenda
+
+
+| Elemento          | Significado                                                  |
+| ----------------- | ------------------------------------------------------------ |
+| `[ENCERRA]`       | Ciclo interrompido — preenche template de escalação se falha |
+| `/skill-name`     | Skill invocada naquela etapa                                 |
+| `exec_handoff_*`  | Persistência de estado entre fases (disco)                   |
+| `CLAUDE.md →`     | Configuração lida do CLAUDE.md do time                       |
+| `$CI_MAX_RETRIES` | Parametrizável via CLAUDE.md (padrão: 2)                     |
+| `📨`              | Notificação Slack (se `Slack Auto Review: true`)             |
+
+
+### Skills chamadas pelo `/run`
+
+```
+/run
+ ├── /engineer
+ │    ├── /jira-integration      (buscar task)
+ │    ├── /jira-task-clarity     (avaliar clareza)
+ │    ├── /init                  (gerar CLAUDE.md do repo, se necessário)
+ │    ├── /execution-feedback    (consultar aprendizados)
+ │    ├── /git-workflow          (branch, commits, PR, CI)
+ │    ├── /engineer-multi        (se 2+ repos)
+ │    └── /slack-review          (notifica review no Slack, se habilitado)
+ ├── /pr-resolve
+ │    ├── /git-workflow          (push, CI)
+ │    └── /slack-review          (notifica resolução de comentários, se habilitado)
+ └── /finalize
+      ├── /git-workflow          (merge)
+      └── /slack-review          (notifica merge na thread, se habilitado)
+```
+
+---
+
 ## Comandos disponíveis
 
-| Comando | O que faz |
-|---|---|
-| `/engineer` | Implementa a próxima task do Jira (ciclo completo) |
-| `/engineer --dry-run` | Simula tudo sem criar branch, PR ou mover task |
-| `/run` | Ciclo completo: engineer + resolve comentários + deploy |
-| `/run-parallel --workers 3` | Executa múltiplas tasks em paralelo |
-| `/pr-resolve <url>` | Monitora PR, classifica e resolve comentários de revisão |
-| `/history --stats` | Estatísticas dos últimos 30 dias |
-| `/init` | Gera CLAUDE.md analisando o repositório |
+
+| Comando                     | O que faz                                                |
+| --------------------------- | -------------------------------------------------------- |
+| `/engineer`                 | Implementa a próxima task do Jira (ciclo completo)       |
+| `/engineer --dry-run`       | Simula tudo sem criar branch, PR ou mover task           |
+| `/run`                      | Ciclo completo: engineer + resolve comentários + deploy  |
+| `/run-parallel --workers 3` | Executa múltiplas tasks em paralelo                      |
+| `/pr-resolve <url>`         | Monitora PR, classifica e resolve comentários de revisão |
+| `/history --stats`          | Estatísticas dos últimos 30 dias                         |
+| `/init`                     | Gera CLAUDE.md analisando o repositório                  |
+
 
 ---
 
@@ -108,14 +442,16 @@ Aguarda CI passar, corrige falhas (máx 2 tentativas), atualiza o Jira com link 
 
 O agente não é uma caixa preta. Ele tem limites configuráveis:
 
-| Guardrail | Padrão | Descrição |
-|---|---|---|
-| **Dry-run** | `--dry-run` | Simula sem executar ações destrutivas |
-| **Budget limit** | $5.00 | Interrompe se o custo da sessão ultrapassar o limite |
-| **Confidence threshold** | 15/18 | Não implementa se a clareza da task for insuficiente |
-| **Circuit breaker** | 3 falhas | Para de pegar tasks após N falhas consecutivas |
-| **Merge automático** | PR aprovada + homolog OK | Merge só acontece com aprovação humana |
-| **Rollback automático** | Ativo | Reverte automaticamente se o deploy em produção falhar |
+
+| Guardrail                | Padrão                   | Descrição                                              |
+| ------------------------ | ------------------------ | ------------------------------------------------------ |
+| **Dry-run**              | `--dry-run`              | Simula sem executar ações destrutivas                  |
+| **Budget limit**         | $5.00                    | Interrompe se o custo da sessão ultrapassar o limite   |
+| **Confidence threshold** | 15/18                    | Não implementa se a clareza da task for insuficiente   |
+| **Circuit breaker**      | 3 falhas                 | Para de pegar tasks após N falhas consecutivas         |
+| **Merge automático**     | PR aprovada + homolog OK | Merge só acontece com aprovação humana                 |
+| **Rollback automático**  | Ativo                    | Reverte automaticamente se o deploy em produção falhar |
+
 
 Todos são configuráveis no `CLAUDE.md` do time.
 
@@ -171,12 +507,14 @@ Tudo com agentes paralelos em worktrees isolados.
 
 Cada time configura seu fluxo de CI/CD no `CLAUDE.md`. O agente lê e adapta:
 
-| Trigger | O que o agente faz |
-|---|---|
-| `auto` | CI roda sozinho, agente só aguarda |
+
+| Trigger               | O que o agente faz                     |
+| --------------------- | -------------------------------------- |
+| `auto`                | CI roda sozinho, agente só aguarda     |
 | `comment:/ok-to-test` | Posta o comentário na PR para disparar |
-| `merge:develop` | Faz merge para a branch alvo |
-| `skip` | Pula a etapa inteira |
+| `merge:develop`       | Faz merge para a branch alvo           |
+| `skip`                | Pula a etapa inteira                   |
+
 
 Exemplo para CI automático sem ambientes intermediários:
 
@@ -229,13 +567,15 @@ O `/engineer` (command) chama a skill `jira-integration` para buscar tasks, a sk
 
 ### Pré-requisitos
 
-| Dependência | Obrigatório | Para que |
-|---|---|---|
-| [Git](https://git-scm.com/) | Sim | Worktrees, clone, commits |
-| [Claude Code](https://claude.ai/code) | Sim | Runtime do agente |
-| [GitHub CLI](https://cli.github.com/) (`gh`) | Sim | PRs, CI, MCP do GitHub |
-| [jq](https://jqlang.github.io/jq/) | Sim | Parsing de JSON |
-| [Docker](https://docker.com) | Opcional | Knowledge-service |
+
+| Dependência                                  | Obrigatório | Para que                  |
+| -------------------------------------------- | ----------- | ------------------------- |
+| [Git](https://git-scm.com/)                  | Sim         | Worktrees, clone, commits |
+| [Claude Code](https://claude.ai/code)        | Sim         | Runtime do agente         |
+| [GitHub CLI](https://cli.github.com/) (`gh`) | Sim         | PRs, CI, MCP do GitHub    |
+| [jq](https://jqlang.github.io/jq/)           | Sim         | Parsing de JSON           |
+| [Docker](https://docker.com)                 | Opcional    | Knowledge-service         |
+
 
 ### Um comando
 
@@ -362,12 +702,14 @@ make test-skills
 
 O agente escolhe a skill com base no repositório:
 
-| Indicador | Skill acionada |
-|---|---|
-| `go.mod` | Skill Go |
-| `package.json` + React | Skill frontend |
-| `pom.xml` / `build.gradle` | Skill Java |
-| Nenhum match | Gera CLAUDE.md via `/init` |
+
+| Indicador                  | Skill acionada             |
+| -------------------------- | -------------------------- |
+| `go.mod`                   | Skill Go                   |
+| `package.json` + React     | Skill frontend             |
+| `pom.xml` / `build.gradle` | Skill Java                 |
+| Nenhum match               | Gera CLAUDE.md via `/init` |
+
 
 ---
 
@@ -401,3 +743,4 @@ Atualmente só Jira é suportado via MCP. A arquitetura de skills permite adicio
 - **Repositório:** [github.com/wallacehenriquesilva/ai-engineer](https://github.com/wallacehenriquesilva/ai-engineer)
 - **Claude Code:** [claude.ai/code](https://claude.ai/code)
 - **Licença:** MIT
+

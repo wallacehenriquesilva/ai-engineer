@@ -65,7 +65,53 @@ Label de participação de AI (adicionada automaticamente pela git-workflow):
 
 - `feat:` `fix:` `test:` `docs:` `refactor:` `chore:`
 
+## Slack (opcional)
+
+Slack Auto Review: <SLACK_AUTO_REVIEW>
+Slack Review Channel: <SLACK_REVIEW_CHANNEL>
+
+## Slack User Map
+<SLACK_USER_MAP>
+
+## Slack Review Groups
+<SLACK_REVIEW_GROUPS>
+
 ## DORA Metrics
 
 Commit vazio obrigatório antes de qualquer implementação:
 `git commit -m 'chore: initial commit' --allow-empty`
+
+<!--
+REFERÊNCIA DE CAMPOS — usado apenas durante geração do CLAUDE.md.
+Remova este bloco do arquivo gerado.
+
+| Placeholder                  | Tipo          | Default | Exemplo / Valores aceitos                                     |
+|------------------------------|---------------|---------|---------------------------------------------------------------|
+| TEAM_NAME                    | string        | —       | payments                                                      |
+| JIRA_BOARD                   | int           | —       | 1234                                                          |
+| JIRA_PROJECT                 | string        | —       | PAY                                                           |
+| GITHUB_ORG                   | string        | —       | my-org                                                        |
+| GITHUB_TEAM                  | string        | —       | @my-org/payments                                              |
+| AI_LABEL                     | string        | AI      | AI                                                            |
+| CLARITY_OWNERS               | string (csv)  | —       | @alice, @bob                                                  |
+| SANDBOX_DOMAIN               | string        | ""      | dev.mycompany.local (vazio = pula validação)                  |
+| HOMOLOG_DOMAIN               | string        | ""      | hml.mycompany.local (vazio = pula validação)                  |
+| PROD_DOMAIN                  | string        | ""      | prod.mycompany.local (vazio = pula validação)                 |
+| TESTS_TRIGGER                | enum          | auto    | auto | comment:<texto> | skip                                 |
+| TESTS_VALIDATION             | enum          | checks:*| sonarqube:<bot> | checks:<pattern> | checks:*                 |
+| TESTS_TIMEOUT                | int (min)     | 20      | 20                                                            |
+| CI_MAX_RETRIES               | int           | 2       | 2                                                             |
+| SANDBOX_TRIGGER              | enum          | skip    | auto | comment:<texto> | skip                                 |
+| SANDBOX_VALIDATION           | enum          | —       | checks:<pattern>                                              |
+| HOMOLOG_TRIGGER              | enum          | skip    | auto | comment:<texto> | skip                                 |
+| HOMOLOG_VALIDATION           | enum          | —       | checks:<pattern>                                              |
+| PROD_TRIGGER                 | enum          | auto    | auto | skip                                                   |
+| PROD_VALIDATION              | enum          | —       | gh-runs:prod|production|deploy                                |
+| BUDGET_LIMIT                 | float (USD)   | 5.00    | 30.00                                                         |
+| CONFIDENCE_THRESHOLD         | int (0-18)    | 15      | 15                                                            |
+| CIRCUIT_BREAKER_THRESHOLD    | int           | 3       | 3                                                             |
+| SLACK_AUTO_REVIEW            | bool          | false   | true | false                                                  |
+| SLACK_REVIEW_CHANNEL         | string        | ""      | C1BPPR0NUT1 (Slack channel ID, vazio = desabilitado)          |
+| SLACK_USER_MAP               | map (yaml)    | ""      | - user.github: U1NCC390 (um por linha)                        |
+| SLACK_REVIEW_GROUPS          | map (yaml)    | ""      | - backend: @handle (um por linha, use default: como fallback) |
+-->
