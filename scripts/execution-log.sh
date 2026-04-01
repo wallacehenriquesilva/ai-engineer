@@ -246,3 +246,63 @@ exec_log_stats() {
     total_cost_usd: ([.[] | .cost_usd // 0] | add | . * 10000 | round / 10000)
   }'
 }
+
+# ── Handoff State — persistência entre skills ────────────────────────────────
+# Grava estado de handoff para que a próxima skill recupere o contexto,
+# mesmo que a sessão do Claude Code seja encerrada entre fases.
+
+HANDOFF_DIR="${HANDOFF_DIR:-$HOME/.ai-engineer/handoffs}"
+mkdir -p "$HANDOFF_DIR"
+
+exec_handoff_save() {
+  local task_id="$1"
+  local from_skill="$2"   # engineer | pr-resolve | finalize
+  local to_skill="$3"     # pr-resolve | finalize
+  shift 3
+  # Remaining args are key=value pairs
+  local handoff_file="$HANDOFF_DIR/${task_id}.json"
+
+  local json_data="{}"
+  json_data=$(jq -n \
+    --arg task    "$task_id" \
+    --arg from    "$from_skill" \
+    --arg to      "$to_skill" \
+    --arg ts      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{task: $task, from_skill: $from, to_skill: $to, saved_at: $ts}')
+
+  # Add key=value pairs
+  for pair in "$@"; do
+    local key="${pair%%=*}"
+    local value="${pair#*=}"
+    json_data=$(echo "$json_data" | jq --arg k "$key" --arg v "$value" '. + {($k): $v}')
+  done
+
+  echo "$json_data" > "$handoff_file"
+  echo "$handoff_file"
+}
+
+exec_handoff_load() {
+  local task_id="$1"
+  local handoff_file="$HANDOFF_DIR/${task_id}.json"
+
+  if [ -f "$handoff_file" ]; then
+    cat "$handoff_file"
+  else
+    echo "{}"
+  fi
+}
+
+exec_handoff_get() {
+  local task_id="$1"
+  local key="$2"
+  local handoff_file="$HANDOFF_DIR/${task_id}.json"
+
+  if [ -f "$handoff_file" ]; then
+    jq -r --arg k "$key" '.[$k] // empty' "$handoff_file"
+  fi
+}
+
+exec_handoff_clean() {
+  local task_id="$1"
+  rm -f "$HANDOFF_DIR/${task_id}.json"
+}
