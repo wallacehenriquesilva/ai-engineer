@@ -1,7 +1,7 @@
 {
   "name": "ai-engineer",
-  "version": "0.1.0",
-  "description": "Desenvolvedor autônomo para times de engenharia. Busca tasks do Jira, avalia clareza, implementa código, abre PRs e resolve comentários de revisão.",
+  "version": "1.1.0",
+  "description": "Desenvolvedor autônomo para times de engenharia. Busca tasks do Jira, avalia clareza, implementa código, abre PRs, resolve comentários de revisão e faz deploy.",
   "author": {
     "name": "Wallace Silva",
     "url": "https://github.com/wallacehenriquesilva"
@@ -12,6 +12,46 @@
     "claude-code": ">=1.0.0"
   },
   "skills": [
+    {
+      "name": "engineer",
+      "path": "skills/engineer/SKILL.md",
+      "description": "Implementação automática de task do Jira"
+    },
+    {
+      "name": "engineer-multi",
+      "path": "skills/engineer-multi/SKILL.md",
+      "description": "Implementação coordenada para tasks com 2+ repos"
+    },
+    {
+      "name": "pr-resolve",
+      "path": "skills/pr-resolve/SKILL.md",
+      "description": "Resolução de comentários de revisão de PR"
+    },
+    {
+      "name": "finalize",
+      "path": "skills/finalize/SKILL.md",
+      "description": "Deploy e merge de PR aprovada"
+    },
+    {
+      "name": "run",
+      "path": "skills/run/SKILL.md",
+      "description": "Ciclo completo: engineer → pr-resolve → finalize"
+    },
+    {
+      "name": "run-parallel",
+      "path": "skills/run-parallel/SKILL.md",
+      "description": "Execução paralela de múltiplas tasks"
+    },
+    {
+      "name": "history",
+      "path": "skills/history/SKILL.md",
+      "description": "Histórico e estatísticas de execuções"
+    },
+    {
+      "name": "init",
+      "path": "skills/init/SKILL.md",
+      "description": "Gera CLAUDE.md analisando o repositório"
+    },
     {
       "name": "jira-integration",
       "path": "skills/jira-integration/SKILL.md",
@@ -36,38 +76,11 @@
       "name": "knowledge-query",
       "path": "skills/knowledge-query/SKILL.md",
       "description": "Busca semântica no knowledge base da org"
-    }
-  ],
-  "commands": [
-    {
-      "name": "engineer",
-      "path": "commands/engineer.md",
-      "description": "Implementação automática de task do Jira"
     },
     {
-      "name": "pr-resolve",
-      "path": "commands/pr-resolve.md",
-      "description": "Resolução de comentários de revisão de PR"
-    },
-    {
-      "name": "finalize",
-      "path": "commands/finalize.md",
-      "description": "Deploy e merge de PR aprovada"
-    },
-    {
-      "name": "run",
-      "path": "commands/run.md",
-      "description": "Ciclo completo: engineer → pr-resolve → finalize"
-    },
-    {
-      "name": "run-parallel",
-      "path": "commands/run-parallel.md",
-      "description": "Execução paralela de múltiplas tasks"
-    },
-    {
-      "name": "history",
-      "path": "commands/history.md",
-      "description": "Histórico e estatísticas de execuções"
+      "name": "slack-review",
+      "path": "skills/slack-review/SKILL.md",
+      "description": "Notificações de code review no Slack"
     }
   ],
   "mcpServers": {
@@ -81,15 +94,15 @@
       "required": true,
       "setup": "uvx mcp-atlassian (requer email + API token do Atlassian)"
     },
+    "slack": {
+      "description": "Slack — notificações de review, menções, threads",
+      "required": false,
+      "setup": "npx -y @modelcontextprotocol/server-slack (requer Bot Token + Team ID)"
+    },
     "playwright": {
-      "description": "Browser automation — testes E2E, screenshots",
+      "description": "Browser automation — screenshots e evidências para tasks de frontend",
       "required": false,
       "setup": "npx @anthropic/mcp-playwright"
-    },
-    "figma": {
-      "description": "Figma — leitura de designs e tokens",
-      "required": false,
-      "setup": "Requer Figma API token"
     }
   },
   "scripts": {

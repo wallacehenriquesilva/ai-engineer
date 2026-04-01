@@ -114,4 +114,10 @@ Remova este bloco do arquivo gerado.
 | SLACK_REVIEW_CHANNEL         | string        | ""      | C1BPPR0NUT1 (Slack channel ID, vazio = desabilitado)          |
 | SLACK_USER_MAP               | map (yaml)    | ""      | - user.github: U1NCC390 (um por linha)                        |
 | SLACK_REVIEW_GROUPS          | map (yaml)    | ""      | - backend: @handle (um por linha, use default: como fallback) |
+
+Credenciais MCP (configuradas pelo install.sh, salvas no .env e settings.json):
+| Campo              | Tipo   | Onde usar          | Exemplo                           |
+|--------------------|--------|--------------------|-----------------------------------|
+| SLACK_BOT_TOKEN    | string | MCP env (xoxb-...) | xoxb-123-456-abc (Bot OAuth Token)|
+| SLACK_TEAM_ID      | string | MCP env (T...)     | T01ABCDEF (Workspace ID)          |
 -->

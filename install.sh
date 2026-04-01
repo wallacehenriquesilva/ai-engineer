@@ -79,7 +79,7 @@ install_skills() {
     cp -R "$skill"/* "$dest_skills/$name/" 2>/dev/null
     count=$((count + 1))
   done
-  log_ok "$count skills instaladas em $dest_skills"
+  log_ok "$count skills instaladas em $dest_skills (Claude Code)"
 
   # Limpa commands legados (migrados para skills)
   if [ -d "$HOME/.claude/commands" ]; then
@@ -94,7 +94,83 @@ install_skills() {
     done
     [ "$legacy_count" -gt 0 ] && log_ok "$legacy_count commands legados removidos (migrados para skills)"
   fi
+
+  # TODO: Multi-tool support (Copilot, Cursor, Gemini CLI, etc.)
+  # Skills são acopladas ao Claude Code (MCPs, Agent, Skill, TaskCreate).
+  # Para funcionar em outras tools, precisa de camada de abstração.
+  # Referência: https://github.com/msitarzewski/agency-agents (convert.sh)
+  # install_skills_copilot
+  # install_skills_cursor
 }
+
+# ── Conversão e instalação para GitHub Copilot ──────────────────────────────
+# DESABILITADO: skills usam tools específicos do Claude Code (MCP, Agent, etc.)
+# que não existem no Copilot. Requer adaptação do formato e das chamadas.
+
+# install_skills_copilot() {
+#   # Detecta Copilot (VS Code extension ou CLI)
+#   local copilot_dir="$HOME/.github/agents"
+#   if [ ! -d "$HOME/.github" ] && ! command -v github-copilot-cli >/dev/null 2>&1; then
+#     return 0
+#   fi
+#
+#   mkdir -p "$copilot_dir"
+#   local count=0
+#
+#   for skill in "$SOURCE_DIR"/skills/*/; do
+#     [ -f "$skill/SKILL.md" ] || continue
+#     local name=$(basename "$skill")
+#
+#     # Copilot usa .md direto com frontmatter simplificado
+#     cp "$skill/SKILL.md" "$copilot_dir/${name}.md" 2>/dev/null
+#     count=$((count + 1))
+#   done
+#
+#   [ "$count" -gt 0 ] && log_ok "$count skills instaladas em $copilot_dir (GitHub Copilot)"
+# }
+
+# ── Conversão e instalação para Cursor ──────────────────────────────────────
+# DESABILITADO: skills usam tools específicos do Claude Code (MCP, Agent, etc.)
+# que não existem no Cursor. Requer conversão real, não apenas cópia.
+
+# install_skills_cursor() {
+#   # Detecta Cursor pelo diretório de config ou binário
+#   if [ ! -d "$HOME/.cursor" ] && ! command -v cursor >/dev/null 2>&1; then
+#     return 0
+#   fi
+#
+#   local cursor_dir=".cursor/rules"
+#   mkdir -p "$cursor_dir"
+#   local count=0
+#
+#   for skill in "$SOURCE_DIR"/skills/*/; do
+#     [ -f "$skill/SKILL.md" ] || continue
+#     local name=$(basename "$skill")
+#
+#     # Extrai description do frontmatter
+#     local desc
+#     desc=$(awk '/^---$/{n++; next} n==1' "$skill/SKILL.md" \
+#       | grep "^description:" | head -1 | sed 's/^description:[[:space:]]*//')
+#
+#     # Extrai corpo (após frontmatter)
+#     local body
+#     body=$(awk '/^---$/{n++; next} n>=2' "$skill/SKILL.md")
+#
+#     # Gera formato .mdc do Cursor
+#     cat > "$cursor_dir/${name}.mdc" <<MDCEOF
+# ---
+# description: ${desc:-$name skill}
+# globs: ""
+# alwaysApply: false
+# ---
+#
+# ${body}
+# MDCEOF
+#     count=$((count + 1))
+#   done
+#
+#   [ "$count" -gt 0 ] && log_ok "$count skills instaladas em $cursor_dir (Cursor)"
+# }
 
 configure_mcp() {
   local name="$1" type="$2" command="$3" args="$4" env_json="$5"
@@ -227,6 +303,66 @@ setup_atlassian_mcp() {
       CONFLUENCE_URL: $confluence_url, CONFLUENCE_USERNAME: $email, CONFLUENCE_API_TOKEN: $token}')
 
   configure_mcp "mcp-atlassian" "stdio" "$mcp_cmd" "$mcp_args" "$env_json"
+}
+
+setup_slack_mcp() {
+  local bot_token="" team_id=""
+
+  # Verifica se já está configurado
+  if jq -e '.mcpServers."slack"' "$HOME/.claude/settings.json" >/dev/null 2>&1; then
+    log_ok "MCP Slack já configurado (global)"
+    return 0
+  fi
+
+  echo ""
+  prompt "Deseja configurar notificações no Slack? [s/N]:"
+  read -r do_slack
+  if [ "$do_slack" != "s" ] && [ "$do_slack" != "S" ]; then
+    log_info "Pulando Slack MCP."
+    return 0
+  fi
+
+  log_info "Configurando integração com Slack..."
+  echo -e "  ${DIM}Crie um Bot Token em: https://api.slack.com/apps → OAuth & Permissions${NC}"
+  echo -e "  ${DIM}Scopes necessários: channels:history, channels:read, chat:write, reactions:read, users:read${NC}"
+  echo ""
+
+  prompt "Slack Bot Token (xoxb-...):"
+  read -rs bot_token
+  echo ""
+  [ -z "$bot_token" ] && { log_warn "Token não informado — pulando Slack MCP."; return 1; }
+
+  prompt "Slack Team ID (T...):"
+  read -r team_id
+  [ -z "$team_id" ] && { log_warn "Team ID não informado — pulando Slack MCP."; return 1; }
+
+  # Salvar credenciais no .env
+  local env_file="$INSTALL_DIR/.env"
+  mkdir -p "$INSTALL_DIR"
+  for var_pair in "SLACK_BOT_TOKEN=$bot_token" "SLACK_TEAM_ID=$team_id"; do
+    local var_name="${var_pair%%=*}"
+    if [ -f "$env_file" ] && grep -q "^$var_name=" "$env_file" 2>/dev/null; then
+      sed -i.bak "s|^$var_name=.*|$var_pair|" "$env_file"
+      rm -f "$env_file.bak"
+    else
+      echo "$var_pair" >> "$env_file"
+    fi
+  done
+  log_ok "Credenciais Slack salvas no .env"
+
+  local env_json
+  env_json=$(jq -n \
+    --arg bot_token "$bot_token" \
+    --arg team_id "$team_id" \
+    '{SLACK_BOT_TOKEN: $bot_token, SLACK_TEAM_ID: $team_id}')
+
+  # Verifica se npx está disponível
+  if command -v npx >/dev/null 2>&1; then
+    configure_mcp "slack" "stdio" "npx" '["-y","@modelcontextprotocol/server-slack"]' "$env_json"
+  else
+    log_warn "npx não encontrado — instale Node.js para usar o Slack MCP."
+    return 1
+  fi
 }
 
 setup_gemini_key() {
@@ -505,6 +641,9 @@ setup_github_mcp
 # Atlassian MCP (Jira + Confluence)
 setup_atlassian_mcp || true
 
+# Slack MCP (notificações de review)
+setup_slack_mcp || true
+
 # ── Step 4: Skills e Commands ────────────────────────────────────────────────
 
 log_step 4 "Instalando skills"
@@ -561,6 +700,12 @@ if jq -e '.mcpServers."mcp-atlassian"' "$HOME/.claude/settings.json" >/dev/null 
   log_ok "Atlassian MCP (Jira) configurado"
 else
   log_warn "Atlassian MCP não configurado — execute novamente o instalador para configurar"
+fi
+
+if jq -e '.mcpServers."slack"' "$HOME/.claude/settings.json" >/dev/null 2>&1; then
+  log_ok "Slack MCP configurado"
+else
+  log_warn "Slack MCP não configurado (opcional) — execute novamente o instalador para configurar"
 fi
 
 if curl -sf "http://localhost:8080/health" >/dev/null 2>&1; then

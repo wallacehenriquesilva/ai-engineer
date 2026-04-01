@@ -18,6 +18,7 @@ allowed-tools:
   - Write
   - mcp__mcp-atlassian__jira_*
   - mcp__github__*
+  - mcp__playwright__*
 ---
 
 # finalize: Finalização e Deploy da Task
@@ -64,7 +65,25 @@ Extraia:
 - **Chave da task Jira** — do body da PR
 - **Nome do serviço** — do nome do repo na URL da PR
 - **Tipo de repo** — termina com `-infra`? → Terraform. Demais → serviço.
+- **É frontend?** — detecte pelo repo: `package.json` com React/Next.js/Vue → `IS_FRONTEND=true`
 - **Endpoint da task** — leia a descrição via `jira_get_issue`
+- **URL da tela** (se frontend) — extraia da descrição da task ou dos critérios de aceite a URL/rota que foi alterada
+
+```bash
+# Detectar se é frontend
+IS_FRONTEND=false
+if [ -f "package.json" ]; then
+  grep -qE '"react"|"next"|"vue"|"angular"' package.json && IS_FRONTEND=true
+fi
+```
+
+### Template de evidências
+
+Use o template correto para gerar evidências padronizadas:
+- Backend → [templates/evidence-backend.md](templates/evidence-backend.md)
+- Frontend → [templates/evidence-frontend.md](templates/evidence-frontend.md)
+
+Preencha os placeholders com os dados reais de cada ambiente. Omita seções de ambientes com trigger `skip`.
 
 ---
 
@@ -93,6 +112,8 @@ Se falhar: **"Deploy em sandbox falhou. Verifique os logs antes de prosseguir."*
 
 Se `$SANDBOX_DOMAIN` está vazio → pule.
 
+### Backend (`IS_FRONTEND=false`):
+
 ```bash
 curl -si -X <METHOD> \
   "http://<service-name>.$SANDBOX_DOMAIN/<endpoint>" \
@@ -101,6 +122,16 @@ curl -si -X <METHOD> \
 ```
 
 Status >= 400 → **"Serviço não respondeu corretamente em sandbox."**
+
+### Frontend (`IS_FRONTEND=true`):
+
+Use Playwright para abrir a URL alterada e tirar screenshot:
+
+1. Navegue até `http://<service-name>.$SANDBOX_DOMAIN/<rota-da-tela>`
+2. Aguarde a página carregar completamente (networkidle)
+3. Tire screenshot da página inteira
+4. Salve em `.claude/evidence/screenshot-<TASK-ID>-sandbox.png`
+5. Se a página retornar erro visível (tela de erro, 404, 500) → **"Frontend não renderizou corretamente em sandbox."**
 
 ---
 
@@ -120,6 +151,8 @@ Se falhar: **"Deploy em homolog falhou."**
 
 Se `$HOMOLOG_DOMAIN` está vazio → pule a validação de endpoint mas gere evidências do CI.
 
+### Backend (`IS_FRONTEND=false`):
+
 Se `$HOMOLOG_DOMAIN` está preenchido:
 
 ```bash
@@ -132,6 +165,22 @@ curl -si -X <METHOD> \
 Status >= 400 → **"Serviço não respondeu corretamente em homolog."**
 
 Salve evidências em `.claude/evidence/evidence-<TASK-ID>.md` com: serviço, ambiente, data, request, response e resultado.
+
+### Frontend (`IS_FRONTEND=true`):
+
+Se `$HOMOLOG_DOMAIN` está preenchido:
+
+1. Navegue até `http://<service-name>.$HOMOLOG_DOMAIN/<rota-da-tela>`
+2. Aguarde a página carregar completamente (networkidle)
+3. Tire screenshot da página inteira
+4. Salve em `.claude/evidence/screenshot-<TASK-ID>-homolog.png`
+5. Se a task especificar múltiplas rotas ou estados, tire screenshot de cada um
+6. Se a página retornar erro visível → **"Frontend não renderizou corretamente em homolog."**
+
+Salve evidências em `.claude/evidence/evidence-<TASK-ID>.md` incluindo:
+- Screenshots tirados (paths)
+- URL de cada screenshot
+- Status visual (renderizou corretamente ou não)
 
 ---
 
@@ -234,6 +283,8 @@ Mova a task de volta para `Fazendo`.
 
 Se `$PROD_DOMAIN` está vazio → pule a validação de endpoint.
 
+### Backend (`IS_FRONTEND=false`):
+
 Se `$PROD_DOMAIN` está preenchido:
 
 ```bash
@@ -243,7 +294,26 @@ curl -si -X <METHOD> \
   -d '<payload-se-necessario>'
 ```
 
-Salve evidências em `.claude/evidence/evidence-<TASK-ID>-prod.md`. Poste como comentário na task via `jira_add_comment`.
+Salve evidências em `.claude/evidence/evidence-<TASK-ID>-prod.md`.
+
+### Frontend (`IS_FRONTEND=true`):
+
+Se `$PROD_DOMAIN` está preenchido:
+
+1. Navegue até `http://<service-name>.$PROD_DOMAIN/<rota-da-tela>`
+2. Aguarde a página carregar completamente (networkidle)
+3. Tire screenshot da página inteira
+4. Salve em `.claude/evidence/screenshot-<TASK-ID>-prod.png`
+5. Se a task especificar múltiplas rotas ou estados, tire screenshot de cada um
+
+Salve evidências em `.claude/evidence/evidence-<TASK-ID>-prod.md` incluindo:
+- Screenshots tirados (paths)
+- URL de cada screenshot
+- Status visual (renderizou corretamente ou não)
+
+### Postar evidências no Jira
+
+Poste o relatório de evidências como comentário na task via `jira_add_comment`. Para tasks de frontend, mencione os screenshots e inclua os links/paths das imagens.
 
 ---
 
@@ -258,6 +328,7 @@ Salve evidências em `.claude/evidence/evidence-<TASK-ID>-prod.md`. Poste como c
 - **Homolog:** ✅ validado
 - **Produção:** ✅ validado
 - **Evidências:** .claude/evidence/evidence-<TASK-ID>.md
+- **Screenshots:** <lista de screenshots, se frontend>
 - **Status Jira:** Done
 ```
 
