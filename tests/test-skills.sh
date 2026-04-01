@@ -1,5 +1,5 @@
 #!/bin/bash
-# test-skills.sh — Testes automatizados para skills e commands do AI Engineer
+# test-skills.sh — Testes automatizados para skills do AI Engineer
 # Uso: ./tests/test-skills.sh [--verbose]
 #
 # Valida estrutura, campos obrigatórios, referências e consistência.
@@ -73,71 +73,97 @@ for skill_dir in "$ROOT_DIR"/skills/*/; do
     warn "$skill_name: campo 'allowed-tools' ausente — skill pode não funcionar corretamente"
   fi
 
-  # Referências internas (links para examples/)
-  while IFS= read -r line; do
-    ref=$(echo "$line" | grep -oE '\(examples/[^)]+\)' | tr -d '()' || true)
-    [ -z "$ref" ] && continue
-    if [ -f "$skill_dir/$ref" ]; then
-      pass "$skill_name: referência $ref válida"
-    else
-      fail "$skill_name: referência quebrada → $ref"
-    fi
-  done < "$skill_file"
+  # Campo version
+  if awk '/^---$/{n++; next} n==1' "$skill_file" | grep -q "^version:"; then
+    pass "$skill_name: campo 'version' presente"
+  else
+    warn "$skill_name: campo 'version' ausente (recomendado)"
+  fi
 
-  # Referências a references/
+  # Campo depends-on
+  if awk '/^---$/{n++; next} n==1' "$skill_file" | grep -q "^depends-on:"; then
+    pass "$skill_name: campo 'depends-on' presente"
+  else
+    warn "$skill_name: campo 'depends-on' ausente (recomendado)"
+  fi
+
+  # Campo triggers
+  if awk '/^---$/{n++; next} n==1' "$skill_file" | grep -q "^triggers:"; then
+    pass "$skill_name: campo 'triggers' presente"
+  else
+    warn "$skill_name: campo 'triggers' ausente (recomendado)"
+  fi
+
+  # Referências internas (examples/, references/, templates/)
+  for ref_dir in examples references templates; do
+    while IFS= read -r line; do
+      ref=$(echo "$line" | grep -oE "\(${ref_dir}/[^)]+\)" | tr -d '()' || true)
+      [ -z "$ref" ] && continue
+      if [ -f "$skill_dir/$ref" ]; then
+        pass "$skill_name: referência $ref válida"
+      else
+        fail "$skill_name: referência quebrada → $ref"
+      fi
+    done < "$skill_file"
+  done
+
+  # Valida depends-on aponta para skills existentes
+  in_frontmatter=false
+  in_depends=false
   while IFS= read -r line; do
-    ref=$(echo "$line" | grep -oE '\(references/[^)]+\)' | tr -d '()' || true)
-    [ -z "$ref" ] && continue
-    if [ -f "$skill_dir/$ref" ]; then
-      pass "$skill_name: referência $ref válida"
-    else
-      fail "$skill_name: referência quebrada → $ref"
+    if [ "$line" = "---" ]; then
+      if $in_frontmatter; then break; fi
+      in_frontmatter=true
+      continue
+    fi
+    $in_frontmatter || continue
+
+    if echo "$line" | grep -q "^depends-on:"; then
+      # depends-on: [] — lista vazia inline, pular
+      if echo "$line" | grep -q "\[\]"; then
+        continue
+      fi
+      in_depends=true
+      continue
+    fi
+
+    if $in_depends; then
+      # Se a linha começa com "  - ", é um item da lista YAML
+      if echo "$line" | grep -qE '^[[:space:]]+-[[:space:]]'; then
+        dep=$(echo "$line" | sed 's/^[[:space:]]*-[[:space:]]*//' | xargs)
+        if [ -z "$dep" ] || [ "$dep" = "[]" ]; then
+          in_depends=false
+          continue
+        fi
+        if [ -d "$ROOT_DIR/skills/$dep" ]; then
+          pass "$skill_name: depends-on '$dep' existe"
+        else
+          fail "$skill_name: depends-on '$dep' não encontrada em skills/"
+        fi
+      else
+        # Linha não é item de lista — saiu do depends-on
+        in_depends=false
+      fi
     fi
   done < "$skill_file"
 done
 
 echo ""
 
-# ── 2. Validar estrutura de commands ────────────────────────────────────────
+# ── 2. Executar lint-skills.sh ─────────────────────────────────────────────
 
-echo "2. Validando commands..."
+echo "2. Executando lint de skills..."
 
-for cmd_file in "$ROOT_DIR"/commands/*.md; do
-  cmd_name=$(basename "$cmd_file" .md)
-
-  # Frontmatter obrigatório
-  if head -1 "$cmd_file" | grep -q "^---"; then
-    pass "$cmd_name: frontmatter presente"
+LINT_SCRIPT="$ROOT_DIR/scripts/lint-skills.sh"
+if [ -f "$LINT_SCRIPT" ] && [ -x "$LINT_SCRIPT" ]; then
+  if "$LINT_SCRIPT" --ci >/dev/null 2>&1; then
+    pass "lint-skills.sh: todas as skills passaram"
   else
-    fail "$cmd_name: frontmatter ausente"
-    continue
+    fail "lint-skills.sh: uma ou mais skills falharam na validação"
   fi
-
-  # Campo description
-  if grep -q "^description:" "$cmd_file"; then
-    pass "$cmd_name: campo 'description' presente"
-  else
-    fail "$cmd_name: campo 'description' ausente"
-  fi
-
-  # Campo allowed-tools
-  if grep -q "^allowed-tools:" "$cmd_file"; then
-    pass "$cmd_name: campo 'allowed-tools' presente"
-  else
-    warn "$cmd_name: campo 'allowed-tools' ausente"
-  fi
-
-  # Referências a skills existentes
-  while IFS= read -r skill_ref; do
-    skill_ref=$(echo "$skill_ref" | xargs)
-    [ -z "$skill_ref" ] && continue
-    # Normalizar: remover backticks e prefixo skill
-    skill_ref_clean=$(echo "$skill_ref" | sed 's/`//g' | sed 's/^skill //')
-    if [ -d "$ROOT_DIR/skills/$skill_ref_clean" ]; then
-      pass "$cmd_name: skill '$skill_ref_clean' existe"
-    fi
-  done < <(grep -oE "skill \`[a-z-]+\`|skill [a-z-]+" "$cmd_file" 2>/dev/null || true)
-done
+else
+  warn "lint-skills.sh não encontrado ou não executável — pulando"
+fi
 
 echo ""
 
@@ -204,14 +230,19 @@ echo ""
 
 echo "5. Validando consistência..."
 
-# README menciona os commands principais
-for cmd in engineer pr-resolve finalize run history; do
-  if grep -qi "$cmd" "$ROOT_DIR/README.md" 2>/dev/null; then
-    pass "README: menciona /$cmd"
-  else
-    warn "README: não menciona /$cmd"
-  fi
-done
+# PROJECT.md menciona os commands principais
+PROJECT_FILE="$ROOT_DIR/docs/PROJECT.md"
+if [ -f "$PROJECT_FILE" ]; then
+  for cmd in engineer pr-resolve finalize run history; do
+    if grep -qi "$cmd" "$PROJECT_FILE" 2>/dev/null; then
+      pass "PROJECT.md: menciona /$cmd"
+    else
+      warn "PROJECT.md: não menciona /$cmd"
+    fi
+  done
+else
+  warn "docs/PROJECT.md não encontrado"
+fi
 
 # Makefile targets existem
 for target in setup up down scan watch install test clean; do
@@ -241,6 +272,19 @@ else
   fail "install.sh não encontrado"
 fi
 
+# CLAUDE.md.template existe e tem referência de campos
+TEMPLATE="$ROOT_DIR/docs/CLAUDE.md.template"
+if [ -f "$TEMPLATE" ]; then
+  pass "CLAUDE.md.template existe"
+  if grep -q "REFERÊNCIA DE CAMPOS" "$TEMPLATE"; then
+    pass "CLAUDE.md.template: referência de campos presente"
+  else
+    warn "CLAUDE.md.template: referência de campos ausente"
+  fi
+else
+  fail "CLAUDE.md.template não encontrado"
+fi
+
 echo ""
 
 # ── 6. Validar execution-log.sh ─────────────────────────────────────────────
@@ -252,7 +296,7 @@ if [ -f "$EXEC_LOG" ]; then
   pass "execution-log.sh existe"
 
   # Funções exportadas
-  for fn in exec_log_start exec_log_end exec_log_fail exec_log_history exec_log_stats; do
+  for fn in exec_log_start exec_log_end exec_log_fail exec_log_history exec_log_stats exec_handoff_save exec_handoff_load exec_handoff_get exec_handoff_clean; do
     if grep -q "^${fn}()" "$EXEC_LOG"; then
       pass "execution-log.sh: função $fn definida"
     else
@@ -261,13 +305,55 @@ if [ -f "$EXEC_LOG" ]; then
   done
 
   # Smoke test: source sem erro
-  if (source "$EXEC_LOG" 2>/dev/null); then
+  if (EXEC_LOG_DIR=$(mktemp -d) HANDOFF_DIR=$(mktemp -d) source "$EXEC_LOG" 2>/dev/null); then
     pass "execution-log.sh: source sem erros"
   else
     fail "execution-log.sh: erro ao fazer source"
   fi
 else
   fail "execution-log.sh não encontrado"
+fi
+
+echo ""
+
+# ── 7. Validar handoff templates ────────────────────────────────────────────
+
+echo "7. Validando handoff templates..."
+
+HANDOFF_DIR="$ROOT_DIR/skills/run/templates"
+if [ -d "$HANDOFF_DIR" ]; then
+  pass "run/templates/ existe"
+
+  for template in engineer-to-pr-resolve.md pr-resolve-to-finalize.md escalation.md; do
+    if [ -f "$HANDOFF_DIR/$template" ]; then
+      pass "handoff template: $template existe"
+    else
+      fail "handoff template: $template não encontrado"
+    fi
+  done
+else
+  fail "skills/run/templates/ não encontrado"
+fi
+
+echo ""
+
+# ── 8. Validar runbooks ────────────────────────────────────────────────────
+
+echo "8. Validando runbooks..."
+
+RUNBOOKS_DIR="$ROOT_DIR/docs/runbooks"
+if [ -d "$RUNBOOKS_DIR" ]; then
+  pass "docs/runbooks/ existe"
+
+  for runbook in hotfix-p0.md large-refactoring.md new-integration.md; do
+    if [ -f "$RUNBOOKS_DIR/$runbook" ]; then
+      pass "runbook: $runbook existe"
+    else
+      warn "runbook: $runbook não encontrado"
+    fi
+  done
+else
+  warn "docs/runbooks/ não encontrado"
 fi
 
 echo ""
