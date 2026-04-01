@@ -81,6 +81,11 @@
       "name": "slack-review",
       "path": "skills/slack-review/SKILL.md",
       "description": "Notificações de code review no Slack"
+    },
+    {
+      "name": "run-queue",
+      "path": "skills/run-queue/SKILL.md",
+      "description": "Execução contínua com work queue — não bloqueia esperando review"
     }
   ],
   "mcpServers": {

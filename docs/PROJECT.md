@@ -430,6 +430,7 @@ O `/run` orquestra 3 skills em sequência: `engineer → pr-resolve → finalize
 | `/engineer`                 | Implementa a próxima task do Jira (ciclo completo)       |
 | `/engineer --dry-run`       | Simula tudo sem criar branch, PR ou mover task           |
 | `/run`                      | Ciclo completo: engineer + resolve comentários + deploy  |
+| `/run-queue --max-tasks 10` | Execução contínua — não bloqueia esperando review        |
 | `/run-parallel --workers 3` | Executa múltiplas tasks em paralelo                      |
 | `/pr-resolve <url>`         | Monitora PR, classifica e resolve comentários de revisão |
 | `/history --stats`          | Estatísticas dos últimos 30 dias                         |
@@ -621,15 +622,35 @@ claude
 
 ## Execução contínua
 
-### Uma task por vez
+### Uma task por vez (bloqueante)
 
 ```
 /run
 ```
 
-Executa o ciclo completo: busca task, implementa, resolve comentários, faz deploy.
+Executa o ciclo completo: busca task, implementa, resolve comentários, faz deploy. **Bloqueia** esperando revisão — ideal para uma task isolada.
 
-### Múltiplas tasks
+### Execução contínua com work queue (recomendado)
+
+```
+/run-queue --max-tasks 10 --max-active 5
+```
+
+Implementa tasks sem bloquear esperando review. O agente:
+1. Pega uma task, implementa, abre PR
+2. Em vez de esperar revisão, pega a próxima task
+3. Monitora todas as PRs em background
+4. Quando uma PR recebe feedback → resolve imediatamente (prioridade)
+5. Quando uma PR é aprovada → finaliza e faz deploy (prioridade)
+6. Repete até processar `--max-tasks` ou esgotar tasks disponíveis
+
+O estado persiste em SQLite (`~/.ai-engineer/queue.db`) — se a sessão cair, execute `/run-queue` novamente para retomar.
+
+```
+Prioridade: resolver feedback > finalizar aprovadas > implementar nova task
+```
+
+### Múltiplas tasks em paralelo
 
 ```
 /run-parallel --workers 3
@@ -637,7 +658,7 @@ Executa o ciclo completo: busca task, implementa, resolve comentários, faz depl
 
 Busca N tasks, reserva todas, lança agentes paralelos em worktrees isolados.
 
-### Loop contínuo
+### Loop contínuo (fora do Claude Code)
 
 ```bash
 ./scripts/run-loop.sh --max-tasks 10
