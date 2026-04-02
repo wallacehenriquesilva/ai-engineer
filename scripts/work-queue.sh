@@ -1,14 +1,15 @@
 #!/bin/bash
 # work-queue.sh — Work queue baseado em SQLite para gerenciar tasks em paralelo
 #
-# Permite ao agente implementar tasks sem bloquear esperando review.
-# PRs são monitoradas em background e priorizadas quando recebem feedback.
+# Suporta múltiplas PRs por task (ex: multi-repo, app + infra).
+# Uma task só é considerada concluída quando TODAS as suas PRs estão finalizadas.
 #
 # Uso:
 #   source scripts/work-queue.sh
 #   wq_init
-#   wq_add "AZUL-1234" "https://github.com/..." "my-service" "AZUL-1234/feat" "/path/worktree"
-#   wq_update "AZUL-1234" "has_feedback"
+#   wq_add "AZUL-1234" "my-service" "AZUL-1234/feat" "/path/worktree"
+#   wq_set_pr "AZUL-1234" "my-service" "https://github.com/..."
+#   wq_update_pr "AZUL-1234" "my-service" "has_feedback"
 #   wq_list "waiting_review"
 #   wq_next_action
 #   wq_poll_prs
@@ -20,58 +21,89 @@ WQ_DB="${WQ_DB:-$HOME/.ai-engineer/queue.db}"
 wq_init() {
   mkdir -p "$(dirname "$WQ_DB")"
   sqlite3 "$WQ_DB" <<'SQL'
-CREATE TABLE IF NOT EXISTS work_queue (
-  task_id        TEXT PRIMARY KEY,
-  pr_url         TEXT,
-  repo           TEXT NOT NULL,
-  branch         TEXT,
-  worktree_path  TEXT,
-  status         TEXT NOT NULL DEFAULT 'implementing',
-  priority       INTEGER NOT NULL DEFAULT 0,
-  feedback_count INTEGER NOT NULL DEFAULT 0,
-  created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-  updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-  metadata       TEXT DEFAULT '{}'
+CREATE TABLE IF NOT EXISTS work_items (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id         TEXT NOT NULL,
+  repo            TEXT NOT NULL,
+  pr_url          TEXT,
+  branch          TEXT,
+  worktree_path   TEXT,
+  status          TEXT NOT NULL DEFAULT 'implementing',
+  priority        INTEGER NOT NULL DEFAULT 0,
+  feedback_count  INTEGER NOT NULL DEFAULT 0,
+  slack_thread_ts TEXT,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  metadata        TEXT DEFAULT '{}',
+  UNIQUE(task_id, repo)
 );
 
 CREATE TABLE IF NOT EXISTS work_queue_log (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   task_id    TEXT NOT NULL,
+  repo       TEXT,
   from_status TEXT,
   to_status  TEXT NOT NULL,
   reason     TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 SQL
+
+  # Migração: se existir tabela antiga work_queue, migrar dados
+  local has_old
+  has_old=$(sqlite3 "$WQ_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name='work_queue';" 2>/dev/null)
+  if [ -n "$has_old" ]; then
+    sqlite3 "$WQ_DB" <<'SQL'
+INSERT OR IGNORE INTO work_items (task_id, repo, pr_url, branch, worktree_path, status, priority, feedback_count, created_at, updated_at, metadata)
+SELECT task_id, repo, pr_url, branch, worktree_path, status, priority, feedback_count, created_at, updated_at, metadata
+FROM work_queue;
+
+DROP TABLE work_queue;
+SQL
+  fi
+
+  # Migração: adicionar coluna repo ao work_queue_log se não existir
+  local has_repo_col
+  has_repo_col=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM pragma_table_info('work_queue_log') WHERE name='repo';" 2>/dev/null)
+  if [ "$has_repo_col" = "0" ]; then
+    sqlite3 "$WQ_DB" "ALTER TABLE work_queue_log ADD COLUMN repo TEXT;" 2>/dev/null || true
+  fi
+
+  # Migração: adicionar coluna slack_thread_ts ao work_items se não existir
+  local has_slack_col
+  has_slack_col=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM pragma_table_info('work_items') WHERE name='slack_thread_ts';" 2>/dev/null)
+  if [ "$has_slack_col" = "0" ]; then
+    sqlite3 "$WQ_DB" "ALTER TABLE work_items ADD COLUMN slack_thread_ts TEXT;" 2>/dev/null || true
+  fi
 }
 
-# ── Adicionar task ao queue ─────────────────────────────────────────────────
+# ── Adicionar item ao queue (uma PR por repo) ───────────────────────────────
 
 wq_add() {
   local task_id="$1"
-  local pr_url="${2:-}"
-  local repo="$3"
-  local branch="${4:-}"
-  local worktree="${5:-}"
-  local metadata="${6:-{}}"
+  local repo="$2"
+  local branch="${3:-}"
+  local worktree="${4:-}"
+  local metadata="${5:-{}}"
 
   sqlite3 "$WQ_DB" <<SQL
-INSERT OR REPLACE INTO work_queue (task_id, pr_url, repo, branch, worktree_path, status, metadata, updated_at)
-VALUES ('$task_id', '$pr_url', '$repo', '$branch', '$worktree', 'implementing', '$metadata', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
+INSERT OR REPLACE INTO work_items (task_id, repo, branch, worktree_path, status, metadata, updated_at)
+VALUES ('$task_id', '$repo', '$branch', '$worktree', 'implementing', '$metadata', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
 SQL
 
-  _wq_log "$task_id" "" "implementing" "Task adicionada ao queue"
+  _wq_log "$task_id" "$repo" "" "implementing" "Item adicionado ao queue"
 }
 
-# ── Atualizar status ────────────────────────────────────────────────────────
+# ── Atualizar status de um item (task + repo) ───────────────────────────────
 
-wq_update() {
+wq_update_pr() {
   local task_id="$1"
-  local new_status="$2"
-  local reason="${3:-}"
+  local repo="$2"
+  local new_status="$3"
+  local reason="${4:-}"
 
   local old_status
-  old_status=$(sqlite3 "$WQ_DB" "SELECT status FROM work_queue WHERE task_id='$task_id';")
+  old_status=$(sqlite3 "$WQ_DB" "SELECT status FROM work_items WHERE task_id='$task_id' AND repo='$repo';")
 
   local extra_sql=""
   if [ "$new_status" = "has_feedback" ]; then
@@ -79,93 +111,180 @@ wq_update() {
   fi
 
   sqlite3 "$WQ_DB" <<SQL
-UPDATE work_queue
+UPDATE work_items
 SET status = '$new_status', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') $extra_sql
-WHERE task_id = '$task_id';
+WHERE task_id = '$task_id' AND repo = '$repo';
 SQL
 
-  _wq_log "$task_id" "$old_status" "$new_status" "$reason"
+  _wq_log "$task_id" "$repo" "$old_status" "$new_status" "$reason"
+}
+
+# Atalho: atualizar por task_id (quando só tem 1 repo, ou atualizar todos)
+wq_update() {
+  local task_id="$1"
+  local new_status="$2"
+  local reason="${3:-}"
+
+  local repos
+  repos=$(sqlite3 "$WQ_DB" "SELECT repo FROM work_items WHERE task_id='$task_id';")
+  while IFS= read -r repo; do
+    [ -z "$repo" ] && continue
+    wq_update_pr "$task_id" "$repo" "$new_status" "$reason"
+  done <<< "$repos"
 }
 
 # ── Atualizar PR URL (após abrir a PR) ─────────────────────────────────────
 
 wq_set_pr() {
   local task_id="$1"
-  local pr_url="$2"
+  local repo="$2"
+  local pr_url="$3"
 
   sqlite3 "$WQ_DB" <<SQL
-UPDATE work_queue
+UPDATE work_items
 SET pr_url = '$pr_url', status = 'waiting_review', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-WHERE task_id = '$task_id';
+WHERE task_id = '$task_id' AND repo = '$repo';
 SQL
 
-  _wq_log "$task_id" "implementing" "waiting_review" "PR aberta: $pr_url"
+  _wq_log "$task_id" "$repo" "implementing" "waiting_review" "PR aberta: $pr_url"
 }
 
-# ── Buscar task por ID ──────────────────────────────────────────────────────
+# ── Slack thread ────────────────────────────────────────────────────────────
+
+wq_set_slack_ts() {
+  local task_id="$1"
+  local repo="$2"
+  local ts="$3"
+
+  sqlite3 "$WQ_DB" <<SQL
+UPDATE work_items
+SET slack_thread_ts = '$ts', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+WHERE task_id = '$task_id' AND repo = '$repo';
+SQL
+}
+
+wq_get_slack_ts() {
+  local task_id="$1"
+  local repo="$2"
+
+  sqlite3 "$WQ_DB" "SELECT slack_thread_ts FROM work_items WHERE task_id='$task_id' AND repo='$repo';" 2>/dev/null
+}
+
+# ── Buscar items por task ───────────────────────────────────────────────────
 
 wq_get() {
   local task_id="$1"
-  sqlite3 -json "$WQ_DB" "SELECT * FROM work_queue WHERE task_id='$task_id';" | jq '.[0] // empty'
+  sqlite3 -json "$WQ_DB" "SELECT * FROM work_items WHERE task_id='$task_id';"
 }
 
-# ── Listar tasks por status ─────────────────────────────────────────────────
+wq_get_pr() {
+  local task_id="$1"
+  local repo="$2"
+  sqlite3 -json "$WQ_DB" "SELECT * FROM work_items WHERE task_id='$task_id' AND repo='$repo';" | jq '.[0] // empty'
+}
+
+# ── Listar items por status ─────────────────────────────────────────────────
 
 wq_list() {
   local status="${1:-}"
 
   if [ -n "$status" ]; then
-    sqlite3 -json "$WQ_DB" "SELECT * FROM work_queue WHERE status='$status' ORDER BY priority DESC, updated_at ASC;"
+    sqlite3 -json "$WQ_DB" "SELECT * FROM work_items WHERE status='$status' ORDER BY priority DESC, updated_at ASC;"
   else
-    sqlite3 -json "$WQ_DB" "SELECT * FROM work_queue WHERE status != 'done' AND status != 'failed' ORDER BY priority DESC, updated_at ASC;"
+    sqlite3 -json "$WQ_DB" "SELECT * FROM work_items WHERE status NOT IN ('done', 'failed') ORDER BY priority DESC, updated_at ASC;"
   fi
 }
 
-# ── Contar tasks ativas ─────────────────────────────────────────────────────
+# ── Contar items ativos ─────────────────────────────────────────────────────
 
 wq_count_active() {
-  sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_queue WHERE status NOT IN ('done', 'failed');"
+  sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_items WHERE status NOT IN ('done', 'failed');"
 }
 
-# ── Remover task concluída ──────────────────────────────────────────────────
+# ── Contar PRs distintas aguardando review ──────────────────────────────────
 
-wq_done() {
-  local task_id="$1"
-  wq_update "$task_id" "done" "Task concluída"
+wq_count_waiting() {
+  sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_items WHERE status='waiting_review';"
 }
 
-wq_fail() {
+# ── Marcar item como done ───────────────────────────────────────────────────
+
+wq_done_pr() {
   local task_id="$1"
-  local reason="${2:-}"
-  wq_update "$task_id" "failed" "$reason"
+  local repo="$2"
+  wq_update_pr "$task_id" "$repo" "done" "PR concluída"
+}
+
+wq_fail_pr() {
+  local task_id="$1"
+  local repo="$2"
+  local reason="${3:-}"
+  wq_update_pr "$task_id" "$repo" "failed" "$reason"
+}
+
+# ── Verificar se TODAS as PRs de uma task estão done ────────────────────────
+
+wq_is_task_done() {
+  local task_id="$1"
+  local total pending
+  total=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_items WHERE task_id='$task_id';")
+  pending=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_items WHERE task_id='$task_id' AND status NOT IN ('done', 'failed');")
+
+  if [ "$total" -gt 0 ] && [ "$pending" -eq 0 ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+# ── Listar tasks com status agregado ────────────────────────────────────────
+
+wq_task_summary() {
+  local task_id="$1"
+  sqlite3 -json "$WQ_DB" <<SQL
+SELECT
+  task_id,
+  COUNT(*) as total_prs,
+  SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as done_prs,
+  SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_prs,
+  SUM(CASE WHEN status = 'waiting_review' THEN 1 ELSE 0 END) as waiting_prs,
+  SUM(CASE WHEN status = 'has_feedback' THEN 1 ELSE 0 END) as feedback_prs,
+  SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved_prs,
+  SUM(CASE WHEN status = 'implementing' THEN 1 ELSE 0 END) as implementing_prs,
+  GROUP_CONCAT(repo || ':' || status, ', ') as details
+FROM work_items
+WHERE task_id = '$task_id'
+GROUP BY task_id;
+SQL
 }
 
 # ── Próxima ação a tomar ────────────────────────────────────────────────────
 # Retorna JSON com a ação prioritária:
 #   action: resolve | finalize | implement
 #   task_id: AZUL-1234
+#   repo: my-service
 #   pr_url: https://...
 
 wq_next_action() {
   # Prioridade 1: PRs com feedback (resolver comentários)
   local feedback
   feedback=$(sqlite3 -json "$WQ_DB" \
-    "SELECT * FROM work_queue WHERE status='has_feedback' ORDER BY priority DESC, updated_at ASC LIMIT 1;" \
+    "SELECT * FROM work_items WHERE status='has_feedback' ORDER BY priority DESC, updated_at ASC LIMIT 1;" \
     | jq '.[0] // empty')
 
   if [ -n "$feedback" ] && [ "$feedback" != "null" ]; then
-    echo "$feedback" | jq '{action: "resolve", task_id: .task_id, pr_url: .pr_url, repo: .repo, worktree_path: .worktree_path}'
+    echo "$feedback" | jq '{action: "resolve", task_id: .task_id, repo: .repo, pr_url: .pr_url, worktree_path: .worktree_path}'
     return 0
   fi
 
   # Prioridade 2: PRs aprovadas (finalizar)
   local approved
   approved=$(sqlite3 -json "$WQ_DB" \
-    "SELECT * FROM work_queue WHERE status='approved' ORDER BY priority DESC, updated_at ASC LIMIT 1;" \
+    "SELECT * FROM work_items WHERE status='approved' ORDER BY priority DESC, updated_at ASC LIMIT 1;" \
     | jq '.[0] // empty')
 
   if [ -n "$approved" ] && [ "$approved" != "null" ]; then
-    echo "$approved" | jq '{action: "finalize", task_id: .task_id, pr_url: .pr_url, repo: .repo, worktree_path: .worktree_path}'
+    echo "$approved" | jq '{action: "finalize", task_id: .task_id, repo: .repo, pr_url: .pr_url, worktree_path: .worktree_path}'
     return 0
   fi
 
@@ -179,64 +298,81 @@ wq_next_action() {
 wq_poll_prs() {
   local prs
   prs=$(sqlite3 -json "$WQ_DB" \
-    "SELECT task_id, pr_url FROM work_queue WHERE status IN ('waiting_review') AND pr_url != '' AND pr_url IS NOT NULL;")
+    "SELECT task_id, repo, pr_url FROM work_items WHERE status IN ('waiting_review') AND pr_url != '' AND pr_url IS NOT NULL;")
 
   [ -z "$prs" ] || [ "$prs" = "[]" ] && return 0
 
   echo "$prs" | jq -c '.[]' | while IFS= read -r row; do
-    local task_id pr_url
+    local task_id repo pr_url
     task_id=$(echo "$row" | jq -r '.task_id')
+    repo=$(echo "$row" | jq -r '.repo')
     pr_url=$(echo "$row" | jq -r '.pr_url')
 
     # Buscar estado da PR
-    local pr_data
-    pr_data=$(gh pr view "$pr_url" --json state,reviews,comments 2>/dev/null)
-    [ -z "$pr_data" ] && continue
-
     local state
-    state=$(echo "$pr_data" | jq -r '.state')
+    state=$(gh pr view "$pr_url" --json state --jq '.state' 2>/dev/null)
+    [ -z "$state" ] && continue
 
     # PR mergeada ou fechada
     if [ "$state" = "MERGED" ] || [ "$state" = "CLOSED" ]; then
-      wq_update "$task_id" "done" "PR $state"
+      wq_done_pr "$task_id" "$repo"
       continue
     fi
 
     # Verificar reviews
     local last_review
-    last_review=$(echo "$pr_data" | jq -r '[.reviews[] | select(.state != "COMMENTED")] | last | .state // empty')
+    last_review=$(gh pr view "$pr_url" --json reviews \
+      --jq '[.reviews[] | select(.state != "COMMENTED")] | last | .state // empty' 2>/dev/null)
 
     if [ "$last_review" = "APPROVED" ]; then
-      wq_update "$task_id" "approved" "PR aprovada"
+      wq_update_pr "$task_id" "$repo" "approved" "PR aprovada"
       continue
     fi
 
     if [ "$last_review" = "CHANGES_REQUESTED" ]; then
-      wq_update "$task_id" "has_feedback" "Changes requested"
+      wq_update_pr "$task_id" "$repo" "has_feedback" "Changes requested"
       continue
     fi
 
-    # Verificar comentários novos (excluindo bots)
+    # Verificar comentários novos (gerais + inline review comments)
     local sonar_bot="${SONAR_BOT:-sonarqube-v2-contaazul}"
-    local new_comments
-    new_comments=$(echo "$pr_data" | jq -r \
-      --arg bot "$sonar_bot" \
-      '[.comments[] | select(.author.login != $bot)] | length')
+    local last_updated
+    last_updated=$(sqlite3 "$WQ_DB" "SELECT updated_at FROM work_items WHERE task_id='$task_id' AND repo='$repo';")
 
-    if [ "$new_comments" -gt 0 ]; then
-      # Verificar se há comentários mais recentes que o último update
-      local last_updated
-      last_updated=$(sqlite3 "$WQ_DB" "SELECT updated_at FROM work_queue WHERE task_id='$task_id';")
+    # Comentários gerais da PR
+    local recent_comments
+    recent_comments=$(gh pr view "$pr_url" --json comments \
+      --jq '[.comments[] | {login: .author.login, date: .createdAt}]' 2>/dev/null \
+      | jq --arg bot "$sonar_bot" --arg since "$last_updated" \
+        '[.[] | select(.login != $bot and .date > $since)] | length' 2>/dev/null || echo "0")
 
-      local recent_comments
-      recent_comments=$(echo "$pr_data" | jq -r \
-        --arg bot "$sonar_bot" \
-        --arg since "$last_updated" \
-        '[.comments[] | select(.author.login != $bot and .createdAt > $since)] | length')
+    # Review comments inline (em linhas de código)
+    local pr_number repo_full
+    pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
+    repo_full=$(echo "$pr_url" | grep -oE '[^/]+/[^/]+/pull' | sed 's|/pull||')
+    local recent_review_comments="0"
+    if [ -n "$pr_number" ] && [ -n "$repo_full" ]; then
+      recent_review_comments=$(gh api "/repos/$repo_full/pulls/$pr_number/comments" \
+        --jq '[.[] | .created_at]' 2>/dev/null \
+        | jq --arg since "$last_updated" '[.[] | select(. > $since)] | length' 2>/dev/null || echo "0")
+    fi
 
-      if [ "$recent_comments" -gt 0 ]; then
-        wq_update "$task_id" "has_feedback" "$recent_comments novos comentários"
-      fi
+    local total_new=$(( ${recent_comments:-0} + ${recent_review_comments:-0} ))
+    if [ "$total_new" -gt 0 ] 2>/dev/null; then
+      wq_update_pr "$task_id" "$repo" "has_feedback" "$total_new novos comentários"
+      continue
+    fi
+
+    # Verificar CI checks falhando (sem comentários novos, mas checks vermelhos)
+    local failed_checks
+    failed_checks=$(gh pr checks "$pr_url" --json name,state \
+      --jq '[.[] | select(.state == "FAILURE" or .state == "ERROR")] | length' 2>/dev/null || echo "0")
+
+    if [ "${failed_checks:-0}" -gt 0 ] 2>/dev/null; then
+      local failed_names
+      failed_names=$(gh pr checks "$pr_url" --json name,state \
+        --jq '[.[] | select(.state == "FAILURE" or .state == "ERROR") | .name] | join(", ")' 2>/dev/null || echo "unknown")
+      wq_update_pr "$task_id" "$repo" "has_feedback" "CI checks falhando: $failed_names"
     fi
   done
 }
@@ -248,7 +384,7 @@ wq_summary() {
 SELECT
   status,
   COUNT(*) as count
-FROM work_queue
+FROM work_items
 WHERE status NOT IN ('done', 'failed')
 GROUP BY status
 ORDER BY
@@ -264,13 +400,23 @@ SQL
 
 wq_summary_json() {
   local total implementing waiting feedback approved done failed
-  total=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_queue;")
-  implementing=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_queue WHERE status='implementing';")
-  waiting=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_queue WHERE status='waiting_review';")
-  feedback=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_queue WHERE status='has_feedback';")
-  approved=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_queue WHERE status='approved';")
-  done=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_queue WHERE status='done';")
-  failed=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_queue WHERE status='failed';")
+  total=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_items;")
+  implementing=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_items WHERE status='implementing';")
+  waiting=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_items WHERE status='waiting_review';")
+  feedback=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_items WHERE status='has_feedback';")
+  approved=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_items WHERE status='approved';")
+  done=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_items WHERE status='done';")
+  failed=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_items WHERE status='failed';")
+
+  local distinct_tasks
+  distinct_tasks=$(sqlite3 "$WQ_DB" "SELECT COUNT(DISTINCT task_id) FROM work_items;")
+  local tasks_done
+  tasks_done=$(sqlite3 "$WQ_DB" "
+    SELECT COUNT(*) FROM (
+      SELECT task_id FROM work_items
+      GROUP BY task_id
+      HAVING SUM(CASE WHEN status NOT IN ('done','failed') THEN 1 ELSE 0 END) = 0
+    );")
 
   jq -n \
     --argjson total "$total" \
@@ -280,8 +426,11 @@ wq_summary_json() {
     --argjson approved "$approved" \
     --argjson done "$done" \
     --argjson failed "$failed" \
-    '{total: $total, implementing: $implementing, waiting_review: $waiting,
-      has_feedback: $feedback, approved: $approved, done: $done, failed: $failed}'
+    --argjson tasks "$distinct_tasks" \
+    --argjson tasks_done "$tasks_done" \
+    '{total_items: $total, implementing: $implementing, waiting_review: $waiting,
+      has_feedback: $feedback, approved: $approved, done: $done, failed: $failed,
+      distinct_tasks: $tasks, tasks_fully_done: $tasks_done}'
 }
 
 # ── Histórico de transições ─────────────────────────────────────────────────
@@ -304,12 +453,12 @@ wq_cleanup() {
   local days="${1:-7}"
 
   sqlite3 "$WQ_DB" <<SQL
-DELETE FROM work_queue
+DELETE FROM work_items
 WHERE status IN ('done', 'failed')
 AND updated_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-$days days');
 
 DELETE FROM work_queue_log
-WHERE task_id NOT IN (SELECT task_id FROM work_queue)
+WHERE task_id NOT IN (SELECT task_id FROM work_items)
 AND created_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-$days days');
 SQL
 }
@@ -317,10 +466,10 @@ SQL
 # ── Log interno ─────────────────────────────────────────────────────────────
 
 _wq_log() {
-  local task_id="$1" from_status="$2" to_status="$3" reason="$4"
+  local task_id="$1" repo="$2" from_status="$3" to_status="$4" reason="$5"
 
   sqlite3 "$WQ_DB" <<SQL
-INSERT INTO work_queue_log (task_id, from_status, to_status, reason)
-VALUES ('$task_id', '$from_status', '$to_status', '$reason');
+INSERT INTO work_queue_log (task_id, repo, from_status, to_status, reason)
+VALUES ('$task_id', '$repo', '$from_status', '$to_status', '$reason');
 SQL
 }
