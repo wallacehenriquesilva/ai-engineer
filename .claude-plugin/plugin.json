@@ -86,6 +86,51 @@
       "name": "run-queue",
       "path": "skills/run-queue/SKILL.md",
       "description": "Execução contínua com work queue — não bloqueia esperando review"
+    },
+    {
+      "name": "security",
+      "path": "skills/security/SKILL.md",
+      "description": "Validação de segurança — OWASP Top 10, secrets, injection, crypto"
+    },
+    {
+      "name": "testing-patterns",
+      "path": "skills/testing-patterns/SKILL.md",
+      "description": "Padrões de teste — unit/integration/e2e, mocks, edge cases, TDD"
+    },
+    {
+      "name": "code-review",
+      "path": "skills/code-review/SKILL.md",
+      "description": "Revisão de código — checklist, code smells, SOLID, complexidade"
+    },
+    {
+      "name": "sql",
+      "path": "skills/sql/SKILL.md",
+      "description": "SQL — queries seguras, indexes, transações, otimização"
+    },
+    {
+      "name": "rest-api",
+      "path": "skills/rest-api/SKILL.md",
+      "description": "REST API — design, status codes, pagination, versionamento"
+    },
+    {
+      "name": "observability",
+      "path": "skills/observability/SKILL.md",
+      "description": "Observabilidade — logs, métricas, traces, alertas"
+    },
+    {
+      "name": "performance",
+      "path": "skills/performance/SKILL.md",
+      "description": "Performance — gargalos, caching, concorrência, memory"
+    },
+    {
+      "name": "docker",
+      "path": "skills/docker/SKILL.md",
+      "description": "Docker — multi-stage, segurança, otimização de imagem"
+    },
+    {
+      "name": "database-migration",
+      "path": "skills/database-migration/SKILL.md",
+      "description": "Migrações de banco — zero-downtime, expand-contract, rollback"
     }
   ],
   "mcpServers": {
