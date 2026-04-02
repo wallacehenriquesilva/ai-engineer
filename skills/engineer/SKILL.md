@@ -199,7 +199,7 @@ Para perguntas 12-19, use o padrão se vazio.
 ## Etapa 0.2 — Circuit Breaker
 
 ```bash
-source scripts/knowledge-client.sh
+source ~/.ai-engineer/scripts/knowledge-client.sh
 RECENT=$(kc_exec_list 5 2>/dev/null || echo "[]")
 CONSECUTIVE_FAILURES=$(echo "$RECENT" | jq '[.[] | select(.status == "failure")] | length' 2>/dev/null || echo "0")
 ```
@@ -217,6 +217,8 @@ Se `--budget <valor>` foi passado, use-o. Senão use `$BUDGET_LIMIT`. Verificar 
 ## Etapa 1 — Buscar Task
 
 Use `jira-integration` com board `$JIRA_BOARD`, label `$AI_LABEL`, status `To Do`. Se nenhuma → encerre.
+
+**CRITICAL:** A task retornada DEVE estar sem bloqueios ativos. O `jira-integration` (Seção A3) valida isso, mas confirme: se a task tem links do tipo "is blocked by" apontando para issues que **não** estão Done/Pronto → **rejeite e peça a próxima**. Nunca implemente uma task bloqueada.
 
 **Apenas selecione a task — NÃO mova de status, NÃO mude para "Fazendo".** A task permanece em `To Do` até a Etapa 3.
 
@@ -325,7 +327,7 @@ git push origin <branch>
 ## Etapa 6.1 — Registrar Execução
 
 ```bash
-source scripts/execution-log.sh
+source ~/.ai-engineer/scripts/execution-log.sh
 exec_log_start "engineer" "<TASK-ID>" "<REPO-NAME>"
 ```
 
@@ -334,7 +336,7 @@ exec_log_start "engineer" "<TASK-ID>" "<REPO-NAME>"
 ## Etapa 6.2 — Aprendizados
 
 ```bash
-source scripts/knowledge-client.sh
+source ~/.ai-engineer/scripts/knowledge-client.sh
 REPO_LEARNINGS=$(kc_learning_search "<resumo da task>" "<REPO-NAME>" 5 2>/dev/null || echo "[]")
 ```
 
@@ -490,44 +492,96 @@ cat ~/.claude/skills/git-workflow/examples/pr-example.md
 
 ## Etapa 12 — CI
 
-Leia a seção `## CI/CD Pipeline > ### Testes` do `CLAUDE.md` para determinar como acionar e validar o CI:
+**CRITICAL:** Nenhuma etapa posterior (custo, Slack, Jira) deve ser executada até que **TODOS os checks da PR estejam green**. Não basta um check específico passar — TODOS devem estar SUCCESS ou SKIPPED.
+
+### 12.1 — Acionar CI
+
+Leia a seção `## CI/CD Pipeline > ### Testes` do `CLAUDE.md` para determinar como acionar:
 
 | Trigger no CLAUDE.md | Ação |
 |---|---|
-| `auto` | Não faça nada — CI roda sozinho. Apenas aguarde. |
+| `auto` | Não faça nada — CI roda sozinho. |
 | `comment:<texto>` | `gh pr comment <PR-URL> --body "<texto>"` |
-| `skip` | Pule a validação de CI |
+| `skip` | Pule toda a validação de CI e vá para Etapa 12.4 |
 
-| Validação no CLAUDE.md | Como verificar |
-|---|---|
-| `sonarqube:<bot>` | Poll comentários da PR: `gh pr view <PR-URL> --comments --json comments \| jq '.comments[] \| select(.author.login == "<bot>")'` até encontrar "Quality Gate passed/failed" |
-| `checks:<pattern>` | `gh pr checks <PR-URL> --watch` ou poll por checks com nome matching `<pattern>` |
-| `checks:*` | `gh pr checks <PR-URL> --watch` (todos os checks) |
+### 12.2 — Aguardar TODOS os checks ficarem green
 
-Use `git-workflow` — Seção 4 para correções (máx `$CI_MAX_RETRIES` tentativas, lido do CLAUDE.md).
+Independente do tipo de validação configurada, **sempre** aguarde todos os checks da PR:
+
+```bash
+# Poll até todos os checks estarem concluídos (success, failure, ou skipped)
+for i in $(seq 1 60); do
+  PENDING=$(gh pr checks <PR-URL> --json state --jq '[.[] | select(.state == "PENDING" or .state == "QUEUED" or .state == "IN_PROGRESS")] | length' 2>/dev/null || echo "99")
+
+  if [ "$PENDING" -eq 0 ]; then
+    # Todos concluídos — verificar se algum falhou
+    FAILED=$(gh pr checks <PR-URL> --json name,state --jq '[.[] | select(.state != "SUCCESS" and .state != "SKIPPED")] | length' 2>/dev/null || echo "0")
+
+    if [ "$FAILED" -eq 0 ]; then
+      echo "CI:ALL_GREEN"
+      break
+    else
+      echo "CI:HAS_FAILURES"
+      # Listar checks que falharam
+      gh pr checks <PR-URL> --json name,state --jq '.[] | select(.state != "SUCCESS" and .state != "SKIPPED") | "\(.name): \(.state)"'
+      break
+    fi
+  fi
+
+  sleep 30
+done
+```
+
+Se `CI:ALL_GREEN` → vá para Etapa 12.4 (custo).
+
+### 12.3 — Corrigir falhas de CI
+
+Se `CI:HAS_FAILURES`:
+
+1. Identifique quais checks falharam e por quê:
+   - **Checks de build/teste** → leia os logs, corrija o código, commit e push
+   - **Checks de segurança (Aikido, Snyk, etc.)** → leia os comentários do bot na PR, corrija as vulnerabilidades reportadas
+   - **SonarQube** → leia o comentário do bot, corrija code smells / bugs / vulnerabilidades
+2. Após corrigir e push, reacione o CI se necessário:
+   - Se trigger = `comment:<texto>` → poste o comentário novamente
+   - Se trigger = `auto` → o push já reaciona
+3. Volte para 12.2 (aguardar todos os checks)
+
+**Máximo de tentativas:** `$CI_MAX_RETRIES` (lido do CLAUDE.md, padrão: 2). Se após `$CI_MAX_RETRIES` tentativas ainda houver checks falhando → registre como falha e encerre.
 
 ---
 
-## Etapa 12.1 — Custo
+## Etapa 12.4 — Custo
 
 ```bash
-source scripts/calculate-cost.sh
+source ~/.ai-engineer/scripts/calculate-cost.sh
 ```
 
 ---
 
-## Etapa 12.2 — Registrar Sucesso
+## Etapa 12.5 — Registrar Sucesso
 
 ```bash
-source scripts/execution-log.sh
+source ~/.ai-engineer/scripts/execution-log.sh
 exec_log_end "PR aberta" "<PR-URL>" "$COST" "$INPUT" "$CACHE_WRITE" "$CACHE_READ" "$OUTPUT"
 ```
 
 ---
 
-## Etapa 12.3 — Notificar Review no Slack
+## Etapa 12.6 — Notificar Review no Slack
 
-Se `$SLACK_AUTO_REVIEW` = `true`:
+**CRITICAL:** Esta etapa só deve ser executada **após o CI estar 100% verde** (Etapa 12 concluída com sucesso). Se o CI falhou ou ainda está rodando, **NÃO envie a mensagem no Slack**. O time só deve ser notificado quando a PR estiver pronta para revisão.
+
+Antes de enviar, valide:
+
+```bash
+# Confirmar que todos os checks passaram
+gh pr checks <PR-URL> --json name,state --jq '[.[] | select(.state != "SUCCESS" and .state != "SKIPPED")] | length'
+```
+
+Se o resultado for `> 0` → **NÃO envie**. Aguarde ou corrija primeiro.
+
+Se `$SLACK_AUTO_REVIEW` = `true` **E** CI verde:
 
 ```
 /slack-review request <PR-URL>
@@ -537,6 +591,14 @@ A skill `slack-review` irá:
 - Enviar mensagem no canal configurado (`Slack Review Channel`)
 - Mencionar o grupo de review correto (`Slack Review Groups`) baseado no tipo de mudança
 - Verificar duplicatas antes de enviar
+- Retornar o `ts` (timestamp) da mensagem enviada
+
+Após enviar, salve o `ts` no work queue para uso futuro em replies na thread:
+
+```bash
+source ~/.ai-engineer/scripts/work-queue.sh
+wq_set_slack_ts "$TASK_ID" "$REPO_NAME" "<ts retornado pelo slack-review>"
+```
 
 Se `$SLACK_AUTO_REVIEW` = `false` → pule esta etapa.
 

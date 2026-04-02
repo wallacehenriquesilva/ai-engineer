@@ -214,6 +214,19 @@ Se `$SLACK_AUTO_REVIEW` = `true`:
 
 A skill `slack-review` detecta automaticamente que a PR está merged e adiciona o indicador `:merged:` na thread original.
 
+### Limpar worktree
+
+Após merge confirmado, remova a worktree da task para não acumular:
+
+```bash
+REPO_ROOT=$(git rev-parse --show-toplevel)
+WORKTREE_PATH="$REPO_ROOT/worktrees/<TASK-ID>"
+
+if [ -d "$WORKTREE_PATH" ]; then
+  git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true
+fi
+```
+
 ---
 
 ## Etapa 8 — Aguardar Deploy em Produção

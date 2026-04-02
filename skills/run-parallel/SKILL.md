@@ -134,7 +134,7 @@ Para cada task com falha:
 ## Etapa 8 — Registrar Execuções
 
 ```bash
-source scripts/execution-log.sh
+source ~/.ai-engineer/scripts/execution-log.sh
 ```
 
 Para cada worker, registre a execução (sucesso ou falha) usando `exec_log_start` + `exec_log_end`/`exec_log_fail`.

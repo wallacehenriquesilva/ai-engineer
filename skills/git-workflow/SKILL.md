@@ -43,16 +43,26 @@ fi
 
 ### Criar ou reutilizar worktree
 
-Verifique se já existe um worktree para a task antes de criar:
+Worktrees são criadas dentro da pasta `worktrees/` na raiz do repositório:
 
 ```bash
-WORKTREE_PATH="../<task-id>"
+REPO_ROOT=$(git rev-parse --show-toplevel)
+WORKTREE_PATH="$REPO_ROOT/worktrees/<TASK-ID>"
 
-if git worktree list | grep -q "$WORKTREE_PATH"; then
+if git worktree list | grep -q "worktrees/<TASK-ID>"; then
   cd "$WORKTREE_PATH"
 else
+  mkdir -p "$REPO_ROOT/worktrees"
   git worktree add "$WORKTREE_PATH" "$BASE_BRANCH"
   cd "$WORKTREE_PATH"
+fi
+```
+
+Garanta que `worktrees/` esteja no `.gitignore` do repo:
+
+```bash
+if ! grep -q "^worktrees/" "$REPO_ROOT/.gitignore" 2>/dev/null; then
+  echo "worktrees/" >> "$REPO_ROOT/.gitignore"
 fi
 ```
 
@@ -170,26 +180,58 @@ else
 fi
 ```
 
+### Garantir que as labels existem no repositório
+
+Antes de criar a PR, garanta que as 3 labels existem no repo. Se já existirem, o comando é ignorado:
+
+```bash
+REPO_FULL="$GITHUB_ORG/$(basename $(git rev-parse --show-toplevel))"
+gh label create "ai-none"     --description "Nenhuma parte do código foi gerado por AI" --color "5A2D84" --repo "$REPO_FULL" 2>/dev/null || true
+gh label create "ai-assisted" --description "Parte do código da PR foi gerado por AI"   --color "C00D38" --repo "$REPO_FULL" 2>/dev/null || true
+gh label create "ai-first"    --description "Código 100% gerado por IA"                 --color "29B5BC" --repo "$REPO_FULL" 2>/dev/null || true
+```
+
 ### Criar a PR
 
 **CRITICAL:** O título da PR DEVE seguir exatamente o formato `<TASK-ID> | <descricao em ingles>`. Não use prefixos de commit (feat:, fix:), não omita o TASK-ID, e não mude a ordem.
 
 Exemplos:
-- ✅ `PROJ-1234 | Add CNPJ validation endpoint`
-- ✅ `PROJ-567 | Fix duplicated SQS messages on retry`
+- ✅ `AZUL-1234 | Add CNPJ validation endpoint`
+- ✅ `AZUL-567 | Fix duplicated SQS messages on retry`
 - ❌ `feat: add CNPJ validation endpoint`
-- ❌ `Add CNPJ validation endpoint (PROJ-1234)`
-- ❌ `PROJ-1234 - Add CNPJ validation endpoint`
-- ❌ `PROJ-1234: Add CNPJ validation endpoint`
+- ❌ `Add CNPJ validation endpoint (AZUL-1234)`
+- ❌ `AZUL-1234 - Add CNPJ validation endpoint`
+- ❌ `AZUL-1234: Add CNPJ validation endpoint`
+- ❌ `Add CNPJ validation endpoint`
 
-Abra a PR via CLI usando a branch base detectada e a label de AI:
+### Montar o título da PR
+
+**OBRIGATÓRIO:** Monte o título em uma variável ANTES de criar a PR. Nunca passe o título inline no comando.
+
+```bash
+# 1. Construir o título — TASK_ID é obrigatório no início, separado por " | "
+PR_TITLE="${TASK_ID} | <descricao curta em ingles do que foi feito>"
+
+# 2. Validar: o título DEVE começar com a chave da task (ex: AZUL-1234)
+echo "$PR_TITLE" | grep -qE '^[A-Z]+-[0-9]+ \| .+' || { echo "ERRO: título fora do padrão"; exit 1; }
+```
+
+### Abrir a PR
 
 ```bash
 gh pr create \
-  --title "<TASK-ID> | <descricao em ingles>" \
+  --title "$PR_TITLE" \
   --body "<conteudo do template preenchido em PT-BR>" \
   --base "$BASE_BRANCH" \
   --label "$AI_LABEL"
+```
+
+### Validar após criar
+
+```bash
+# Confirmar que o título ficou correto
+CREATED_TITLE=$(gh pr view --json title --jq '.title')
+echo "$CREATED_TITLE" | grep -qE '^[A-Z]+-[0-9]+ \| .+' || echo "AVISO: título da PR não segue o padrão"
 ```
 
 ---

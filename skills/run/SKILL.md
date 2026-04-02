@@ -122,7 +122,7 @@ Duração total: <tempo desde o início>
 Use `execution-log.sh` para persistir handoff state entre skills. Isso permite recuperação se a sessão for interrompida.
 
 ```bash
-source scripts/execution-log.sh
+source ~/.ai-engineer/scripts/execution-log.sh
 
 # Após Fase 1 (engineer concluído):
 exec_handoff_save "$TASK_ID" "engineer" "pr-resolve" \

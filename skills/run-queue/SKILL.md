@@ -60,9 +60,38 @@ CIRCUIT_BREAKER_THRESHOLD=$(grep "Circuit breaker:" CLAUDE.md | grep -oE '[0-9]+
 ### 0.2 — Inicializar work queue
 
 ```bash
-source scripts/work-queue.sh
+source ~/.ai-engineer/scripts/work-queue.sh
 wq_init
 ```
+
+**CRITICAL:** Use APENAS as funções listadas abaixo. NÃO invente funções ou tabelas que não existem. A tabela se chama `work_items` (NÃO `queue`, NÃO `work_queue`).
+
+Funções disponíveis no `work-queue.sh`:
+
+| Função | Uso |
+|--------|-----|
+| `wq_init` | Inicializa o banco (criar tabelas, migrar schema) |
+| `wq_add <task_id> <repo> [branch] [worktree]` | Adiciona item ao queue |
+| `wq_set_pr <task_id> <repo> <pr_url>` | Define PR URL e muda status para waiting_review |
+| `wq_update_pr <task_id> <repo> <status> [reason]` | Atualiza status de um item |
+| `wq_update <task_id> <status> [reason]` | Atualiza status de TODOS os items de uma task |
+| `wq_get <task_id>` | Retorna todos os items de uma task (JSON) |
+| `wq_get_pr <task_id> <repo>` | Retorna um item específico (JSON) |
+| `wq_list [status]` | Lista items por status ou todos os ativos (JSON) |
+| `wq_count_active` | Conta items ativos (não done/failed) |
+| `wq_count_waiting` | Conta items em waiting_review |
+| `wq_done_pr <task_id> <repo>` | Marca item como done |
+| `wq_fail_pr <task_id> <repo> [reason]` | Marca item como failed |
+| `wq_is_task_done <task_id>` | Retorna "true" se TODAS as PRs da task estão done |
+| `wq_task_summary <task_id>` | Resumo agregado de uma task (JSON) |
+| `wq_set_slack_ts <task_id> <repo> <ts>` | Salva o timestamp da mensagem de review no Slack |
+| `wq_get_slack_ts <task_id> <repo>` | Retorna o timestamp para responder na thread do Slack |
+| `wq_next_action` | Retorna próxima ação prioritária (JSON: action, task_id, repo, pr_url) |
+| `wq_poll_prs` | Verifica status de todas as PRs pendentes via GitHub |
+| `wq_summary` | Resumo do queue por status (texto) |
+| `wq_summary_json` | Resumo do queue (JSON com contadores) |
+| `wq_history [task_id]` | Log de transições (JSON) |
+| `wq_cleanup [days]` | Remove items done/failed mais antigos que N dias |
 
 ### 0.3 — Verificar estado anterior
 
@@ -71,6 +100,13 @@ O queue persiste entre sessões. Verifique se há trabalho pendente de uma execu
 ```bash
 ACTIVE=$(wq_count_active)
 SUMMARY=$(wq_summary_json)
+echo "$SUMMARY" | jq '.'
+```
+
+Para ver os items ativos com detalhes:
+
+```bash
+wq_list | jq '.[] | {task_id, repo, pr_url, status}'
 ```
 
 Se `$ACTIVE > 0`:
@@ -81,6 +117,9 @@ Queue existente detectado:
 - Aguardando review: <N>
 - Com feedback: <N>
 - Aprovadas: <N>
+
+Items ativos:
+<lista dos items com task_id, repo, status>
 
 Retomando de onde parou.
 ```
@@ -145,19 +184,32 @@ ACTION=$(echo "$NEXT" | jq -r '.action')
 ```bash
 TASK_ID=$(echo "$NEXT" | jq -r '.task_id')
 PR_URL=$(echo "$NEXT" | jq -r '.pr_url')
-wq_update "$TASK_ID" "implementing" "Resolvendo feedback"
+REPO=$(echo "$NEXT" | jq -r '.repo')
+wq_update_pr "$TASK_ID" "$REPO" "implementing" "Resolvendo feedback"
 ```
 
-Invoque `/pr-resolve <PR-URL>` em modo não-bloqueante:
-- Resolve os comentários pendentes
-- Faz push
-- Aguarda CI passar
-- **NÃO** fica em polling esperando nova aprovação — apenas resolve e retorna
+**CRITICAL:** Invoque `/pr-resolve <PR-URL> --no-poll`. A flag `--no-poll` é obrigatória — sem ela o pr-resolve entra em polling de 24h e trava o queue.
 
-Após resolver:
+O que o pr-resolve faz com `--no-poll`:
+1. Carrega contexto da PR (Etapa 1)
+2. Localiza worktree (Etapa 2)
+3. **Pula o polling** (Etapa 3)
+4. Analisa os comentários existentes (Etapa 4)
+5. Resolve: implementa, faz commit, responde, marca threads como resolvidos (Etapa 5)
+6. Push + aguarda CI (Etapa 6)
+7. **Retorna** em vez de voltar ao polling
+
+Após retorno com sucesso:
 
 ```bash
-wq_update "$TASK_ID" "waiting_review" "Feedback resolvido, aguardando re-review"
+wq_update_pr "$TASK_ID" "$REPO" "waiting_review" "Feedback resolvido, aguardando re-review"
+```
+
+Após falha:
+
+```bash
+wq_fail_pr "$TASK_ID" "$REPO" "<motivo>"
+CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
 ```
 
 #### Se `ACTION = finalize`:
@@ -165,7 +217,8 @@ wq_update "$TASK_ID" "waiting_review" "Feedback resolvido, aguardando re-review"
 ```bash
 TASK_ID=$(echo "$NEXT" | jq -r '.task_id')
 PR_URL=$(echo "$NEXT" | jq -r '.pr_url')
-wq_update "$TASK_ID" "finalizing" "Iniciando finalização"
+REPO=$(echo "$NEXT" | jq -r '.repo')
+wq_update_pr "$TASK_ID" "$REPO" "finalizing" "Iniciando finalização"
 ```
 
 Invoque `/finalize <PR-URL>`.
@@ -173,14 +226,18 @@ Invoque `/finalize <PR-URL>`.
 Após concluir:
 
 ```bash
-wq_done "$TASK_ID"
-TASKS_PROCESSED=$((TASKS_PROCESSED + 1))
+wq_done_pr "$TASK_ID" "$REPO"
+
+# Verificar se TODAS as PRs da task estão concluídas
+if [ "$(wq_is_task_done "$TASK_ID")" = "true" ]; then
+  TASKS_PROCESSED=$((TASKS_PROCESSED + 1))
+fi
 ```
 
 Se falhar:
 
 ```bash
-wq_fail "$TASK_ID" "<motivo>"
+wq_fail_pr "$TASK_ID" "$REPO" "<motivo>"
 CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
 ```
 
@@ -189,7 +246,7 @@ CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
 Verifique se pode pegar nova task:
 
 ```bash
-ACTIVE_WAITING=$(sqlite3 "$WQ_DB" "SELECT COUNT(*) FROM work_queue WHERE status='waiting_review';")
+ACTIVE_WAITING=$(wq_count_waiting)
 ```
 
 Se `$ACTIVE_WAITING >= $MAX_ACTIVE`:
@@ -201,11 +258,16 @@ Se pode pegar:
 
 Invoque `/engineer` para implementar a próxima task.
 
-Após PR aberta:
+Após PR aberta (pode ser 1 ou mais PRs se multi-repo):
 
 ```bash
-wq_add "$TASK_ID" "" "$REPO_NAME" "$BRANCH" "$WORKTREE_PATH"
-wq_set_pr "$TASK_ID" "$PR_URL"
+# Para cada PR aberta pelo engineer:
+wq_add "$TASK_ID" "$REPO_NAME" "$BRANCH" "$WORKTREE_PATH"
+wq_set_pr "$TASK_ID" "$REPO_NAME" "$PR_URL"
+
+# Se multi-repo, repita para cada repo:
+# wq_add "$TASK_ID" "$REPO_INFRA" "$BRANCH_INFRA" "$WORKTREE_INFRA"
+# wq_set_pr "$TASK_ID" "$REPO_INFRA" "$PR_URL_INFRA"
 ```
 
 Se `/engineer` encerrar sem PR (sem task, sem clareza):
@@ -310,3 +372,5 @@ Se houver tasks pendentes: **"Execute `/run-queue` novamente para retomar o moni
 - **O queue persiste** em `~/.ai-engineer/queue.db` — sessões podem ser retomadas.
 - **Nunca force push, nunca commite na main.**
 - **Cada task usa seu próprio worktree** — não há conflito entre implementações.
+- **Todo comentário é feedback** — trate comentários de bots (Aikido, SonarQube, etc.) da mesma forma que comentários humanos. Resolva, implemente a sugestão, ou responda justificando por que não se aplica. **NUNCA** ignore um comentário sem ação.
+- **PRs devem estar green** — ao resolver feedback, ou abrir uma nova PR, verifique também os CI checks (`gh pr checks`). Se algum check falhou, diagnostique e corrija antes de considerar a PR pronta. Checks falhando têm a mesma prioridade que comentários de reviewer.

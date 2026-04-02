@@ -193,9 +193,11 @@ Envie no canal usando `slack_post_message`.
 Leia `references/message-templates.md` para os templates padrão. Se o CLAUDE.md
 tiver uma seção `## Slack Review Templates`, use o template customizado.
 
-### Passo 6 — Confirmar envio
+### Passo 6 — Confirmar envio e salvar ts
 
-Após enviar, imprima o `ts` da mensagem para referência:
+Após enviar, o `slack_post_message` retorna um `ts` (timestamp). Este `ts` é o ID da mensagem e será usado para responder na thread.
+
+**Sempre retorne o `ts` no output** para que a skill chamadora possa salvá-lo:
 
 ```
 Mensagem enviada!
@@ -203,6 +205,8 @@ Canal: #<nome-do-canal>
 Timestamp: <ts>
 PR: <PR-URL>
 ```
+
+O `/engineer` (Etapa 12.6) salva este `ts` no work queue via `wq_set_slack_ts` para uso em replies futuros.
 
 ---
 
@@ -216,8 +220,17 @@ receber a notificação diretamente.
 
 ### Passo 1 — Localizar a mensagem original
 
-Busque no canal configurado (`$SLACK_REVIEW_CHANNEL`) as mensagens recentes usando
-`slack_get_channel_history` e encontre a que contém a `<PR-URL>`.
+Primeiro, tente recuperar o `ts` do work queue (salvo pelo `/engineer` na Etapa 12.6):
+
+```bash
+source ~/.ai-engineer/scripts/work-queue.sh
+THREAD_TS=$(wq_get_slack_ts "$TASK_ID" "$REPO_NAME")
+```
+
+Se `$THREAD_TS` estiver preenchido → use-o diretamente como `thread_ts`. Pule a busca no histórico.
+
+Se `$THREAD_TS` estiver vazio → fallback: busque no canal configurado (`$SLACK_REVIEW_CHANNEL`)
+usando `slack_get_channel_history` e encontre a que contém a `<PR-URL>`.
 
 - Busque em lotes: primeiro 50 mensagens, depois mais 50 se não encontrar (até 200)
 - Identifique pelo link da PR no texto

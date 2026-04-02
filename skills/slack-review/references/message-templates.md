@@ -7,8 +7,8 @@ adicionando uma seção `## Slack Review Templates` no `CLAUDE.md` do repositór
 
 ```
 :code-review: Code Review
-Solicitado por: <@USER_ID_AUTOR>
-Descrição: <titulo ou descrição concisa da PR>
+Envolvidos: <REVIEWERS>
+Descrição: <RESUMO>
 Link to PR: <PR-URL>
 
 Ao revisar:
@@ -29,6 +29,7 @@ O usuário pode usar estes placeholders no template do CLAUDE.md:
 | `<PR-URL>` | Link da PR |
 | `<TITULO>` | Título da PR |
 | `<DESCRICAO>` | Descrição/body da PR (resumida) |
+| `<RESUMO>` | Breve resumo em PT-BR do que foi feito na PR, gerado pelo agente para auxiliar os revisores |
 | `<ARQUIVOS>` | Lista de arquivos alterados |
 | `<REVIEWERS>` | Menções dos reviewers solicitados |
 

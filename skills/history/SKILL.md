@@ -42,7 +42,7 @@ Analise a mensagem do usuário:
 ## Seção A — Estatísticas
 
 ```bash
-source scripts/execution-log.sh
+source ~/.ai-engineer/scripts/execution-log.sh
 exec_log_stats ${DAYS:-30}
 ```
 
@@ -72,7 +72,7 @@ Apresente formatado:
 ## Seção B — Histórico
 
 ```bash
-source scripts/execution-log.sh
+source ~/.ai-engineer/scripts/execution-log.sh
 exec_log_history --limit ${LIMIT:-20} ${STATUS:+--status $STATUS} ${COMMAND:+--command $COMMAND}
 ```
 

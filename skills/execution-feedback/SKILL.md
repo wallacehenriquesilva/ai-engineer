@@ -30,7 +30,7 @@ Todos os agentes do time compartilham os mesmos aprendizados.
 ## Pré-requisito
 
 ```bash
-source scripts/knowledge-client.sh
+source ~/.ai-engineer/scripts/knowledge-client.sh
 ```
 
 O client usa `KNOWLEDGE_SERVICE_URL` (default: `http://localhost:8080`) e `AGENT_ID` (default: hostname).
@@ -57,7 +57,7 @@ Quando uma execução falhar, registre o aprendizado:
 ### Registrar
 
 ```bash
-source scripts/knowledge-client.sh
+source ~/.ai-engineer/scripts/knowledge-client.sh
 kc_learning_create "$REPO" "$TASK" "$STEP" "$ERROR_TYPE" "$ERROR_MESSAGE" "$ROOT_CAUSE" "$SOLUTION" "$PATTERN"
 ```
 
@@ -74,7 +74,7 @@ O serviço automaticamente:
 Descreva o contexto da implementação em linguagem natural:
 
 ```bash
-source scripts/knowledge-client.sh
+source ~/.ai-engineer/scripts/knowledge-client.sh
 kc_learning_search "consumer SQS para eventos de WhatsApp" "$REPO" 5
 ```
 
@@ -107,7 +107,7 @@ Quando aprendizados forem encontrados, apresente-os como avisos antes de impleme
 Quando um padrão for corrigido estruturalmente:
 
 ```bash
-source scripts/knowledge-client.sh
+source ~/.ai-engineer/scripts/knowledge-client.sh
 kc_learning_resolve "$LEARNING_ID"
 ```
 
@@ -118,7 +118,7 @@ kc_learning_resolve "$LEARNING_ID"
 Consulte learnings candidatos a promoção (`times_seen >= 3`, não promovidos):
 
 ```bash
-source scripts/knowledge-client.sh
+source ~/.ai-engineer/scripts/knowledge-client.sh
 kc_learning_promotions
 ```
 
@@ -132,7 +132,7 @@ Para cada candidato:
 ## E. Estatísticas
 
 ```bash
-source scripts/knowledge-client.sh
+source ~/.ai-engineer/scripts/knowledge-client.sh
 kc_exec_stats 30
 ```
 

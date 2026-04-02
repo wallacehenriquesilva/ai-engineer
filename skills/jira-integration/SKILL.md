@@ -75,11 +75,36 @@ Se nenhuma issue for retornada, encerre com: **"Nenhuma task com label AI dispon
 
 ### A3. Verificar bloqueios
 
-Para cada issue, inspecione `issuelinks`. Descarte a issue se houver qualquer link `inward` do tipo `"is blocked by"` cujo status da issue bloqueante **não seja** `Done` ou `Pronto`.
+**CRITICAL:** Esta verificação é obrigatória e não pode ser pulada. Pegar uma task bloqueada causa conflitos graves na sprint.
 
-Use `jira_get_issue` para checar o status da issue bloqueante quando necessário.
+Para **cada** issue retornada na A2, inspecione o campo `issuelinks`. Uma issue está bloqueada se **qualquer** link satisfazer TODAS as condições:
 
-Se todas as issues estiverem bloqueadas, encerre com: **"Todas as tasks AI da sprint estão bloqueadas."**
+1. O tipo do link é `"Blocks"` (ou `"is blocked by"` no campo `inwardIssue`)
+2. A issue apontada pelo link (`inwardIssue`) **não** está em status `Done`, `Pronto`, `Closed` ou `Resolved`
+
+Para cada link de bloqueio encontrado, use `jira_get_issue` para verificar o status atual da issue bloqueante. Não assuma o status pelo campo `issuelinks` — ele pode estar desatualizado.
+
+```
+Exemplo de issuelinks que BLOQUEIA:
+{
+  "type": {"name": "Blocks", "inward": "is blocked by"},
+  "inwardIssue": {"key": "AZUL-8888", "fields": {"status": {"name": "In Progress"}}}
+}
+→ AZUL-8888 está "In Progress" (não Done) → task está BLOQUEADA → DESCARTAR
+
+Exemplo de issuelinks que NÃO bloqueia:
+{
+  "type": {"name": "Blocks", "inward": "is blocked by"},
+  "inwardIssue": {"key": "AZUL-7777", "fields": {"status": {"name": "Done"}}}
+}
+→ AZUL-7777 está "Done" → bloqueio resolvido → task DISPONÍVEL
+```
+
+**Também verifique `outwardIssue` com tipo `"is blocked by"`** — dependendo da configuração do Jira, o bloqueio pode aparecer em qualquer direção do link.
+
+Se a issue tem bloqueio ativo → **descarte** e passe para a próxima da lista.
+
+Se **todas** as issues estiverem bloqueadas, encerre com: **"Todas as tasks AI da sprint estão bloqueadas."**
 
 ### A4. Selecionar a task
 

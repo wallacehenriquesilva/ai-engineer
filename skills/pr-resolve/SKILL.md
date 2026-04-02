@@ -23,6 +23,12 @@ allowed-tools:
 
 # pr-resolve: Resolução de Comentários de PR
 
+## Flags
+
+- `--no-poll` → Pula o polling da Etapa 3. Vai direto para Etapa 4 (analisar comentários existentes), resolve, faz push, e retorna. Usado pelo `/run-queue` para resolver feedback sem bloquear.
+
+---
+
 ## Etapa 0 — Carregar Configurações
 
 ```bash
@@ -96,7 +102,9 @@ Todas as alterações devem ser feitas dentro do worktree correto.
 
 ## Etapa 3 — Polling de Comentários e Reviews
 
-Monitore a cada 60s, timeout 24h (`run_in_background: true`, `timeout: 86400000`):
+**Se `--no-poll` foi passado:** pule esta etapa inteira e vá direto para a Etapa 4. Os comentários já existem e precisam ser resolvidos imediatamente.
+
+**Se modo normal (sem `--no-poll`):** monitore a cada 60s, timeout 24h (`run_in_background: true`, `timeout: 86400000`):
 
 ```bash
 for i in $(seq 1 1440); do
@@ -179,10 +187,16 @@ Guarde o mapeamento `comment_node_id → thread_id` para uso na Etapa 5.
 
 ### 4.3 — Classificar cada comentário
 
-- **Mudança de código** — algo concreto para implementar
-- **Pergunta/dúvida** — revisor quer entender algo
-- **Sugestão opcional** — não bloqueia aprovação
-- **Ambíguo** — não está claro o que fazer
+**CRITICAL:** Comentários de bots de segurança (Aikido, Snyk, Dependabot, CodeQL, etc.) são **sempre bloqueantes** — devem ser tratados como mudança de código, nunca como sugestão opcional. Bots de segurança reportam vulnerabilidades reais que precisam ser corrigidas.
+
+O único bot cujos comentários podem ser ignorados na classificação é o `$SONAR_BOT` (já filtrado na Etapa 4.1), pois o SonarQube é validado separadamente pelo CI.
+
+Classifique cada comentário:
+
+- **Mudança de código** — algo concreto para implementar (inclui TODOS os comentários de bots de segurança)
+- **Pergunta/dúvida** — revisor humano quer entender algo
+- **Sugestão opcional** — revisor humano sugere melhoria que não bloqueia aprovação
+- **Ambíguo** — não está claro o que fazer (apenas de humanos — bots sempre geram ação concreta)
 
 ---
 
@@ -265,7 +279,8 @@ Após CI verde:
    ```
    A skill `slack-review` irá responder na thread original mencionando os revisores individualmente.
 
-2. Volte ao polling da Etapa 3 para aguardar aprovação.
+2. **Se `--no-poll`:** encerre com sucesso — o `/run-queue` gerencia o ciclo de polling externamente. Retorne os dados: task_id, PR-URL, comentários resolvidos, commits de fix.
+3. **Se modo normal:** volte ao polling da Etapa 3 para aguardar aprovação.
 
 ---
 
