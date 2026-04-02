@@ -96,15 +96,16 @@ for skill_dir in "$ROOT_DIR"/skills/*/; do
 
   # Referências internas (examples/, references/, templates/)
   for ref_dir in examples references templates; do
-    while IFS= read -r line; do
-      ref=$(echo "$line" | grep -oE "\(${ref_dir}/[^)]+\)" | tr -d '()' || true)
+    refs_found=$(grep -oE "\(${ref_dir}/[^)]+\)" "$skill_file" 2>/dev/null | tr -d '()' | sed 's/#.*//' | sort -u || true)
+    [ -z "$refs_found" ] && continue
+    echo "$refs_found" | while IFS= read -r ref; do
       [ -z "$ref" ] && continue
       if [ -f "$skill_dir/$ref" ]; then
         pass "$skill_name: referência $ref válida"
       else
         fail "$skill_name: referência quebrada → $ref"
       fi
-    done < "$skill_file"
+    done
   done
 
   # Valida depends-on aponta para skills existentes
