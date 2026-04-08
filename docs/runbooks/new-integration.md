@@ -1,3 +1,10 @@
+---
+triggers:
+  labels: [integration, new-consumer]
+  keywords: [consumer SQS, webhook, API externa, Braze, Segment, Salesforce, novo tópico SNS]
+  multi_repo: true
+---
+
 # Runbook: Nova Integração
 
 Fluxo para implementar uma nova integração com serviço externo (ex: novo consumer SQS, novo webhook, nova API de terceiro).

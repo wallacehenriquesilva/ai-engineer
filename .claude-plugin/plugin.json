@@ -88,6 +88,16 @@
       "description": "Execução contínua com work queue — não bloqueia esperando review"
     },
     {
+      "name": "orchestrator",
+      "path": "skills/orchestrator/SKILL.md",
+      "description": "Roteamento inteligente — classifica task e decide workflow (hotfix, multi-repo, infra, feature)"
+    },
+    {
+      "name": "evaluator",
+      "path": "skills/evaluator/SKILL.md",
+      "description": "Agente avaliador independente — revisa código antes de abrir PR"
+    },
+    {
       "name": "security",
       "path": "skills/security/SKILL.md",
       "description": "Validação de segurança — OWASP Top 10, secrets, injection, crypto"

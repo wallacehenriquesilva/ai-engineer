@@ -1,3 +1,10 @@
+---
+triggers:
+  labels: [refactoring, tech-debt]
+  estimated_files: 10+
+  keywords: [migração, renomear, refatorar, mover pacote, trocar interface]
+---
+
 # Runbook: Refactoring Grande
 
 Fluxo para refactorings que afetam múltiplos arquivos/pacotes e requerem estratégia de PRs.

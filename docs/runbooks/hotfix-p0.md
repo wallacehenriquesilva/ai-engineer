@@ -1,3 +1,10 @@
+---
+triggers:
+  labels: [hotfix, incident]
+  priority: [P0, P1, Highest]
+  keywords: [bug em produção, incidente, rollback, regressão, produção caiu]
+---
+
 # Runbook: Hotfix P0
 
 Fluxo acelerado para correções críticas em produção que requerem deploy imediato.
