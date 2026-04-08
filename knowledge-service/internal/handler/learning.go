@@ -216,6 +216,25 @@ func (h *Handler) HandleResolveLearning(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(map[string]string{"id": id, "status": "resolved"})
 }
 
+func (h *Handler) HandlePromoteLearning(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+	res, err := h.DB.Exec(r.Context(),
+		`UPDATE learnings SET promoted = true, updated_at = NOW() WHERE id = $1`, id)
+	if err != nil {
+		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if res.RowsAffected() == 0 {
+		http.Error(w, "learning not found", http.StatusNotFound)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"id": id, "status": "promoted"})
+}
+
 func (h *Handler) HandleGetPromotions(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.DB.Query(r.Context(), `
 		SELECT id, repo, task, step, error_type, error_message, root_cause, solution,

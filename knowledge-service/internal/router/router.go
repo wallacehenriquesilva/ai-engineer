@@ -18,6 +18,7 @@ func New(h *handler.Handler) http.Handler {
 	mux.HandleFunc("POST /learnings/search", h.HandleSearchLearnings)
 	mux.HandleFunc("GET /learnings", h.HandleListLearnings)
 	mux.HandleFunc("PUT /learnings/{id}/resolve", h.HandleResolveLearning)
+	mux.HandleFunc("PUT /learnings/{id}/promote", h.HandlePromoteLearning)
 	mux.HandleFunc("GET /learnings/promotions", h.HandleGetPromotions)
 
 	mux.HandleFunc("POST /executions", h.HandleStartExecution)
