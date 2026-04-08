@@ -7,6 +7,7 @@ description: >
   PRs são monitoradas em background e priorizadas quando recebem feedback.
   Uso: /run-queue [--max-tasks 10] [--max-active 5]
 depends-on:
+  - orchestrator
   - engineer
   - pr-resolve
   - finalize
@@ -256,7 +257,9 @@ Se `$ACTIVE_WAITING >= $MAX_ACTIVE`:
 
 Se pode pegar:
 
-Invoque `/engineer` para implementar a próxima task.
+Invoque `/orchestrator` (sem TASK-ID). O orchestrator busca a próxima task disponível no Jira, classifica e roteia para o workflow correto (engineer, engineer-multi, hotfix fast-track, etc.).
+
+**Fallback:** se o orchestrator não estiver disponível ou falhar, invoque `/engineer` diretamente.
 
 Após PR aberta (pode ser 1 ou mais PRs se multi-repo):
 

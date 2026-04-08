@@ -42,8 +42,14 @@ Execute as etapas abaixo em ordem.
 - `--dry-run` → Simula sem executar ações destrutivas (branch, commit, PR, Jira).
 - `--budget <valor>` → Limite de custo em USD (sobrescreve CLAUDE.md).
 - `--force` → Ignora circuit breaker.
+- `--skip-clarity` → Pula avaliação de clareza (usado pelo orchestrator para hotfix).
+- `--fast-ci` → Só testes unitários, sem aguardar SonarQube (usado pelo orchestrator para hotfix).
+- `--min-reviewers <N>` → Número mínimo de reviewers para aprovar (padrão: definido pelo time).
+- `--runbook <path>` → Caminho do runbook a consultar durante a implementação.
+- `--task <TASK-ID>` → ID da task já selecionada (pula Etapa 1 — busca no Jira). Usado pelo orchestrator.
 
 Guarde `$DRY_RUN` (true/false) para verificar antes de ações destrutivas.
+Guarde `$SKIP_CLARITY`, `$FAST_CI`, `$MIN_REVIEWERS`, `$RUNBOOK_PATH`, `$TASK_ID` para uso nas etapas.
 
 ---
 
@@ -216,7 +222,11 @@ Se `--budget <valor>` foi passado, use-o. Senão use `$BUDGET_LIMIT`. Verificar 
 
 ## Etapa 1 — Buscar Task
 
-Use `jira-integration` com board `$JIRA_BOARD`, label `$AI_LABEL`, status `To Do`. Se nenhuma → encerre.
+**Se `--task <TASK-ID>` foi passado:** pule a busca no Jira. Use o TASK-ID fornecido diretamente. Isso acontece quando o orchestrator já selecionou e classificou a task. Vá para Etapa 2.
+
+**Caso contrário:** use `jira-integration` com board `$JIRA_BOARD`, label `$AI_LABEL`, status `To Do`.
+
+**CRITICAL — HARD STOP:** Se nenhuma task for encontrada em "To Do"/"A Fazer" na sprint ativa, **ENCERRE IMEDIATAMENTE**. NÃO busque no backlog, NÃO amplie a busca, NÃO remova filtros, NÃO tente sem sprint, NÃO tente outros status. Zero tasks = zero trabalho.
 
 **CRITICAL:** A task retornada DEVE estar sem bloqueios ativos. O `jira-integration` (Seção A3) valida isso, mas confirme: se a task tem links do tipo "is blocked by" apontando para issues que **não** estão Done/Pronto → **rejeite e peça a próxima**. Nunca implemente uma task bloqueada.
 
@@ -225,6 +235,8 @@ Use `jira-integration` com board `$JIRA_BOARD`, label `$AI_LABEL`, status `To Do
 ---
 
 ## Etapa 2 — Avaliar Clareza
+
+**Se `$SKIP_CLARITY = true`:** pule esta etapa e vá direto para a Etapa 3. Usado pelo orchestrator em cenários de hotfix onde a urgência justifica suposições.
 
 Use `jira-task-clarity`. Sem subtasks → avalie a task. Com subtasks → primeira não finalizada.
 
@@ -346,13 +358,15 @@ Se houver → inclua como avisos no plano da Etapa 7.
 
 ## Etapa 7 — Planejar
 
+**Se `$RUNBOOK_PATH` está definido:** leia o runbook antes de planejar e siga suas instruções específicas. O runbook pode alterar a estratégia (ex: multi-PR para refactoring, infra-first para integrações).
+
 Examine o repo. Salve plano em `.claude/plans/plan-<TASK-ID>.md`: resumo, componentes reutilizados, novos, ordem, avisos de aprendizados.
 
 ---
 
 ## Etapa 8 — Implementar
 
-**Dry-run:** gere código sem escrever em disco, mostre como diff, pule para Etapa 14.
+**Dry-run:** gere código sem escrever em disco, mostre como diff, pule para Etapa 15.
 **Normal:** siga o plano. Verifique budget após implementar.
 
 ---
@@ -363,109 +377,53 @@ Execute testes. Corrija falhas. Verifique budget após testes.
 
 ---
 
-## Etapa 9.1 — Auto-review (Reality Check)
+## Etapa 9.1 — Avaliação por Agente Independente (Evaluator)
 
-**Postura:** default é **NEEDS WORK**. Só prossiga se houver evidência concreta de que a implementação está correta. Não assuma que "compilou e testes passaram" é suficiente.
+**CRITICAL:** Esta etapa invoca um agente avaliador **separado** via tool `Agent`. O evaluator roda em contexto isolado — ele não participou da implementação e portanto não tem viés de confirmação. Isso é intencionalmente diferente de auto-review.
 
-Revise sua própria implementação verificando:
-
-| Critério | Como verificar | Bloqueante? |
-|----------|---------------|-------------|
-| Acceptance criteria atendidos | Compare cada critério da task com o código implementado. Liste: `✅ atendido` ou `❌ não atendido` | Sim |
-| Testes cobrem os cenários | Verifique se há testes para happy path E edge cases descritos na task | Sim |
-| Sem código morto ou debug | Grep por `fmt.Println`, `console.log`, `TODO`, `FIXME`, `HACK` nos arquivos alterados | Sim |
-| Padrões do repo respeitados | Compare com código existente: naming, estrutura, error handling | Não |
-| Sem regressões óbvias | Verifique se algum arquivo existente foi alterado de forma que quebre funcionalidade prévia | Sim |
-
-### Resultado
-
-- **Todos os critérios bloqueantes OK** → prossiga para Etapa 9.2
-- **Algum critério bloqueante falhou** → corrija antes de prosseguir (máx 2 tentativas de auto-correção)
-- **Falhou após 2 tentativas** → registre como falha e encerre (`exec_log_fail`)
+### Preparar dados para o evaluator
 
 ```bash
-# Exemplo de verificação automática de código morto
-git diff --name-only HEAD | xargs grep -n 'fmt\.Println\|console\.log\|TODO\|FIXME\|HACK' || echo "CLEAN"
+DIFF=$(git diff)
+FILES_CHANGED=$(git diff --name-only)
+TASK_DESCRIPTION="<descricao + acceptance criteria da task>"
+TEST_RESULTS="<output dos testes da Etapa 9>"
+
+# Detectar linguagem
+if [ -f "go.mod" ]; then REPO_LANG="go"
+elif [ -f "package.json" ]; then REPO_LANG="js"
+elif [ -f "pom.xml" ] || [ -f "build.gradle" ]; then REPO_LANG="java"
+elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then REPO_LANG="python"
+else REPO_LANG="unknown"; fi
 ```
 
----
+### Invocar o evaluator
 
-## Etapa 9.2 — Validação de Segurança
-
-Valide a segurança do código implementado antes de prosseguir para commits.
-
-### 1. Detectar linguagem
-
-```bash
-if [ -f "go.mod" ]; then
-  LANG="go"
-elif [ -f "package.json" ]; then
-  LANG="js"
-elif [ -f "pom.xml" ] || [ -f "build.gradle" ]; then
-  LANG="java"
-elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then
-  LANG="python"
-elif ls *.tf >/dev/null 2>&1; then
-  LANG="terraform"
-else
-  LANG="unknown"
-fi
-```
-
-### 2. Buscar skill de segurança instalada
-
-Procure por skills de segurança na seguinte ordem de prioridade:
-
-```bash
-# 1. Skill específica para a linguagem: security-<lang>
-SECURITY_SKILL=""
-if [ -d "$HOME/.claude/skills/security-$LANG" ]; then
-  SECURITY_SKILL="security-$LANG"
-# 2. Skill genérica: security
-elif [ -d "$HOME/.claude/skills/security" ]; then
-  SECURITY_SKILL="security"
-fi
-```
-
-### 3. Executar validação
-
-**Se encontrou skill de segurança** (`$SECURITY_SKILL` não vazio):
-
-Invoque a skill passando a lista de arquivos alterados:
+Use a tool `Agent` para lançar o evaluator em contexto isolado:
 
 ```
-/$SECURITY_SKILL <lista-de-arquivos-alterados>
+Agent(prompt: "Invoque a skill /evaluator para revisar o código.
+
+TASK_ID: $TASK_ID
+TASK_DESCRIPTION: $TASK_DESCRIPTION
+DIFF: $DIFF
+FILES_CHANGED: $FILES_CHANGED
+TEST_RESULTS: $TEST_RESULTS
+REPO_LANG: $REPO_LANG
+
+Retorne o veredicto: PASS ou FAIL com justificativa detalhada.")
 ```
 
-A skill de segurança é responsável por analisar e retornar vulnerabilidades encontradas. Se retornar vulnerabilidades bloqueantes → corrija antes de prosseguir (máx 2 tentativas).
+### Processar resultado
 
-**Se NÃO encontrou skill de segurança** → execute checagem básica genérica:
-
-Analise os arquivos alterados (`git diff --name-only`) procurando por:
-
-| Risco | Pattern | Linguagens |
-|-------|---------|------------|
-| Secrets hardcoded | `password\s*=\s*["']`, `api_key\s*=\s*["']`, `secret\s*=\s*["']`, `token\s*=\s*["']` | Todas |
-| SQL injection | Concatenação de strings em queries SQL (ex: `"SELECT.*" +`, `fmt.Sprintf("SELECT`) | Go, Java, Python, JS |
-| Command injection | `exec(`, `os.system(`, `subprocess.call(.*shell=True`, `exec.Command(` com input não sanitizado | Python, Go, JS |
-| XSS | `innerHTML`, `dangerouslySetInnerHTML`, `v-html` com input de usuário | JS |
-| Credenciais em código | `.env` commitado, `AWS_SECRET`, `PRIVATE_KEY` | Todas |
-| Permissões abertas | `0777`, `0666`, `*` em IAM policies | Todas, Terraform |
-
-```bash
-# Checagem genérica de secrets
-git diff --name-only HEAD | xargs grep -inE \
-  'password\s*=\s*["\x27]|api_key\s*=\s*["\x27]|secret\s*=\s*["\x27]|AWS_SECRET|PRIVATE_KEY' \
-  || echo "CLEAN"
-```
-
-### 4. Resultado
-
-| Resultado | Ação |
+| Veredicto | Ação |
 |-----------|------|
-| Nenhuma vulnerabilidade encontrada | Prossiga para Etapa 10 |
-| Vulnerabilidades encontradas | Corrija (máx 2 tentativas). Se não conseguir → registre como falha com detalhes do que foi encontrado |
-| Skill de segurança não disponível + checagem básica limpa | Prossiga com aviso: **"Checagem básica de segurança OK. Para análise completa, instale uma skill `security-<lang>`."** |
+| **PASS** | Prossiga para Etapa 10 (commits) |
+| **FAIL** (ciclo 1) | Corrija cada BLOQUEADOR listado pelo evaluator → re-execute testes (Etapa 9) → re-invoque evaluator |
+| **FAIL** (ciclo 2) | Corrija novamente → re-execute testes → re-invoque evaluator |
+| **FAIL** (ciclo 3+) | Registre como falha (`exec_log_fail`). O evaluator recomenda escalação ao humano. Não entre em loop infinito |
+
+**Máximo de 2 ciclos engineer↔evaluator.** Se após 2 correções o evaluator ainda retornar FAIL, encerre.
 
 ---
 
@@ -477,7 +435,7 @@ git diff --name-only HEAD | xargs grep -inE \
 
 ## Etapa 11 — PR
 
-**Dry-run:** mostre título e body, pule para Etapa 14. **Normal:** use `git-workflow` — Seção 3.
+**Dry-run:** mostre título e body, pule para Etapa 15. **Normal:** use `git-workflow` — Seção 3.
 
 Antes de criar a PR, leia o template e o exemplo:
 
@@ -492,7 +450,9 @@ cat ~/.claude/skills/git-workflow/examples/pr-example.md
 
 ## Etapa 12 — CI
 
-**CRITICAL:** Nenhuma etapa posterior (custo, Slack, Jira) deve ser executada até que **TODOS os checks da PR estejam green**. Não basta um check específico passar — TODOS devem estar SUCCESS ou SKIPPED.
+**Se `$FAST_CI = true`:** aguarde apenas os testes unitários passarem. Ignore SonarQube e checks não-essenciais. Usado pelo orchestrator para hotfix onde velocidade é prioridade.
+
+**CRITICAL:** Fora do modo fast-ci, nenhuma etapa posterior (custo, Slack, Jira) deve ser executada até que **TODOS os checks da PR estejam green**. Não basta um check específico passar — TODOS devem estar SUCCESS ou SKIPPED.
 
 ### 12.1 — Acionar CI
 
@@ -534,20 +494,65 @@ done
 
 Se `CI:ALL_GREEN` → vá para Etapa 12.4 (custo).
 
-### 12.3 — Corrigir falhas de CI
+### 12.3 — Corrigir falhas de CI (Retry Escalado)
 
-Se `CI:HAS_FAILURES`:
+Se `CI:HAS_FAILURES`, a estratégia de correção **escala em profundidade** a cada tentativa. Não repita a mesma abordagem — cada tentativa deve ser mais profunda que a anterior.
 
-1. Identifique quais checks falharam e por quê:
-   - **Checks de build/teste** → leia os logs, corrija o código, commit e push
-   - **Checks de segurança (Aikido, Snyk, etc.)** → leia os comentários do bot na PR, corrija as vulnerabilidades reportadas
-   - **SonarQube** → leia o comentário do bot, corrija code smells / bugs / vulnerabilidades
-2. Após corrigir e push, reacione o CI se necessário:
-   - Se trigger = `comment:<texto>` → poste o comentário novamente
-   - Se trigger = `auto` → o push já reaciona
-3. Volte para 12.2 (aguardar todos os checks)
+#### Tentativa 1 — Correção Direta
 
-**Máximo de tentativas:** `$CI_MAX_RETRIES` (lido do CLAUDE.md, padrão: 2). Se após `$CI_MAX_RETRIES` tentativas ainda houver checks falhando → registre como falha e encerre.
+Foco: corrigir exatamente o que o CI reportou, sem mais.
+
+1. Identifique quais checks falharam:
+   - **Build/teste** → leia o log de erro, corrija o código específico que falhou
+   - **Segurança (Aikido, Snyk)** → leia o comentário do bot, corrija a vulnerabilidade reportada
+   - **SonarQube** → leia o comentário do bot, corrija o code smell/bug
+2. Commit com prefixo `fix:` descrevendo a correção
+3. Push
+4. Reacione CI se necessário (`comment:<texto>` ou automático)
+5. Volte para 12.2 (aguardar checks)
+
+#### Tentativa 2 — Análise Profunda
+
+Foco: entender **por que** a correção anterior não resolveu. Contexto mais amplo.
+
+1. Releia o erro do CI — é o mesmo ou mudou?
+2. Se é o mesmo → a correção anterior não foi suficiente:
+   - Leia os arquivos **relacionados** (não só o arquivo que falhou)
+   - Verifique se o fix da tentativa 1 introduziu um novo problema
+   - Rode os testes **localmente** antes de push para confirmar
+3. Se é um erro diferente → a correção anterior causou regressão:
+   - Analise o diff da tentativa 1
+   - Identifique o efeito colateral
+   - Corrija preservando o fix original
+4. Commit, push, reacione CI
+5. Volte para 12.2
+
+#### Tentativa 3 — Abordagem Alternativa
+
+Foco: se as correções pontuais não funcionam, **reimplementar** a parte que falha.
+
+1. Reverta os commits de fix das tentativas 1 e 2:
+   ```bash
+   git revert --no-edit HEAD~2..HEAD
+   ```
+2. Analise o problema com visão ampla:
+   - O design da implementação é incompatível com o que o CI exige?
+   - Existe uma abordagem alternativa que evita o problema?
+3. Reimplemente a parte que causa falha usando abordagem diferente
+4. Rode testes locais
+5. Commit, push, reacione CI
+6. Volte para 12.2
+
+#### Esgotou tentativas
+
+Se após `$CI_MAX_RETRIES` tentativas (lido do CLAUDE.md, padrão: 2) ainda houver checks falhando:
+
+1. Registre como falha (`exec_log_fail`) incluindo:
+   - Quais checks falharam em cada tentativa
+   - O que foi tentado em cada uma
+   - Por que cada tentativa falhou
+2. Registre aprendizado via `execution-feedback` com o padrão de falha
+3. Encerre — não entre em loop infinito
 
 ---
 
@@ -610,7 +615,23 @@ Mova para `Em Revisão`. Comente com PR-URL e custo. Com subtasks: mova subtask;
 
 ---
 
-## Etapa 14 — Confirmação
+## Etapa 14 — Auto-Promoção de Aprendizados
+
+Após execução bem-sucedida, verifique se há aprendizados prontos para promoção ao CLAUDE.md do repo. Siga a Seção D do `execution-feedback`:
+
+```bash
+source ~/.ai-engineer/scripts/knowledge-client.sh
+CANDIDATES=$(kc_learning_promotions 2>/dev/null || echo "")
+```
+
+Se houver candidatos para este repo → gere regra, abra PR, marque como promovido.
+Se knowledge-service indisponível ou sem candidatos → pule silenciosamente.
+
+**Esta etapa nunca deve bloquear ou falhar a execução.** Erros aqui são ignorados.
+
+---
+
+## Etapa 15 — Confirmação
 
 **Dry-run:** exiba task, clareza, repo, branch/arquivos/commits/PR que seriam criados, custo da simulação.
 **Normal:** exiba task, branch, PR-URL, status CI, custo, tokens, status Jira.

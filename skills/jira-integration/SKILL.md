@@ -66,12 +66,16 @@ Se não houver sprint ativa, encerre com: **"Nenhuma sprint ativa encontrada no 
 Use `jira_search_issues` com o JQL:
 
 ```
-sprint = <sprintId> AND status in ("To Do", "A Fazer") AND labels = "<AI_LABEL>" ORDER BY priority DESC, created ASC
+sprint = <sprintId> AND status in ("To Do", "A Fazer") AND labels = "<AI_LABEL>" AND flagged is EMPTY ORDER BY priority DESC, created ASC
 ```
 
-Campos obrigatórios: `summary`, `description`, `customfield_13749`, `labels`, `issuelinks`, `subtasks`, `status`, `priority`, `assignee`.
+Campos obrigatórios: `summary`, `description`, `customfield_13749`, `labels`, `issuelinks`, `subtasks`, `status`, `priority`, `assignee`, `flagged`.
+
+**Nota:** `flagged is EMPTY` exclui tasks com marcador/impedimento (flag do Jira). Tasks flagadas indicam impedimento humano e NÃO devem ser puxadas pelo agente.
 
 Se nenhuma issue for retornada, encerre com: **"Nenhuma task com label AI disponível na sprint atual."**
+
+**PROIBIDO:** NÃO busque no backlog, NÃO remova o filtro de sprint, NÃO amplie a busca, NÃO tente outros status. Se não há tasks em "To Do"/"A Fazer" na sprint ativa, o resultado correto é ZERO tasks. Encerre sem tentar alternativas.
 
 ### A3. Verificar bloqueios
 
@@ -259,4 +263,6 @@ Para um exemplo de saída formatada, veja [examples/task-output.md](examples/tas
 
 - Esta skill apenas consulta e gerencia status/comentários no Jira. Não implementa código.
 - Selecione **somente uma** task na operação "próxima task".
+- **NUNCA busque tasks fora da sprint ativa.** Backlog, sprints futuras e sprints fechadas estão fora do escopo. Se não há tasks, encerre.
+- **NUNCA pegue tasks flagadas (com marcador/impedimento).** O JQL já filtra com `flagged is EMPTY`, mas se por qualquer motivo uma task flagada aparecer nos resultados, descarte-a.
 - Use as ferramentas MCP do Jira para operações padrão. Use a API REST diretamente (via `curl`) apenas para comentários com menções (Seção D2), que requerem ADF.

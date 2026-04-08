@@ -115,17 +115,65 @@ kc_learning_resolve "$LEARNING_ID"
 
 ## D. Auto-Promoção para CLAUDE.md
 
-Consulte learnings candidatos a promoção (`times_seen >= 3`, não promovidos):
+Após cada execução bem-sucedida, verifique se há aprendizados prontos para promoção.
+
+### D1. Buscar candidatos
 
 ```bash
 source ~/.ai-engineer/scripts/knowledge-client.sh
-kc_learning_promotions
+CANDIDATES=$(kc_learning_promotions)
 ```
 
-Para cada candidato:
-1. Avalie se a solução é generalizável
-2. Se sim, adicione como regra permanente no `CLAUDE.md` do repo ou na skill relevante
-3. Marque como promovido no serviço
+Se vazio ou knowledge-service indisponível → pule silenciosamente.
+
+### D2. Filtrar por repo atual
+
+Filtre os candidatos pelo repo onde a execução aconteceu:
+
+```bash
+echo "$CANDIDATES" | jq --arg repo "$REPO" '[.[] | select(.repo == $repo)]'
+```
+
+Se nenhum candidato para este repo → pule.
+
+### D3. Gerar regra para o CLAUDE.md
+
+Para cada candidato, gere uma regra concisa e acionável baseada no campo `solution`:
+
+```
+## Convenções (auto-promovidas)
+
+- <solução do learning> (padrão: <pattern>, visto <times_seen>x)
+```
+
+**Critérios para promoção:**
+- A solução deve ser **generalizável** (não específica de uma task)
+- A solução deve ser **acionável** (descreve o que fazer, não só o que deu errado)
+- Se a solução é muito específica (ex: "corrigir typo no campo X") → **não promover**
+
+### D4. Abrir PR com a regra
+
+1. Crie branch: `chore/promote-learning-<pattern>`
+2. Edite o `CLAUDE.md` do repo, adicionando a regra na seção de convenções
+3. Abra PR:
+   - Título: `chore: promote learning — <pattern>`
+   - Body: explique que o padrão foi visto N vezes, descreva o aprendizado original
+   - Labels: `ai-first`, `chore`
+4. **NÃO faça merge automático** — a PR requer aprovação humana
+
+### D5. Marcar como promovido
+
+Após abrir a PR, marque o learning como promovido no knowledge-service:
+
+```bash
+kc_learning_promote "$LEARNING_ID"
+```
+
+Isso evita que o mesmo learning seja promovido novamente.
+
+### D6. Fallback sem knowledge-service
+
+Se o knowledge-service estiver indisponível, a auto-promoção é pulada silenciosamente. O fluxo principal (implementação) nunca deve falhar por causa da promoção.
 
 ---
 
