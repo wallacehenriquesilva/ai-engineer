@@ -137,7 +137,19 @@ test-skills: ## Valida estrutura de skills, commands e scripts
 test-exec-log: ## Testa o sistema de log de execuções
 	@bash tests/test-execution-log.sh
 
-test-all: test test-skills test-exec-log ## Roda todos os testes
+test-agents: ## Valida estrutura, contratos JSON e coerência dos agents
+	@bash tests/test-agents.sh
+
+test-classifier: ## Testes unitários do task-classifier e runbook-matcher
+	@bash tests/test-task-classifier.sh
+
+test-pipeline: ## Testes de cenários do pipeline (sem LLM real)
+	@bash tests/test-pipeline.sh
+
+test-pipeline-verbose: ## Testes de cenários do pipeline com output detalhado
+	@bash tests/test-pipeline.sh --verbose
+
+test-all: test test-skills test-exec-log test-agents test-classifier test-pipeline ## Roda todos os testes
 
 test-query: ## Testa uma query semântica no knowledge service
 	@read -p "Query: " q; \

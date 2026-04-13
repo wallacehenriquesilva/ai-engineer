@@ -53,6 +53,7 @@
 - Budget limit: $<BUDGET_LIMIT>
 - Confidence threshold: <CONFIDENCE_THRESHOLD>/18
 - Circuit breaker: <CIRCUIT_BREAKER_THRESHOLD> falhas consecutivas
+- Promotion threshold: 5
 
 ## Padrões de PR
 

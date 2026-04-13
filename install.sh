@@ -66,6 +66,34 @@ check_dependency() {
   fi
 }
 
+install_commands() {
+  local dest_commands="$HOME/.claude/commands"
+  local count=0
+
+  mkdir -p "$dest_commands"
+
+  for cmd in "$SOURCE_DIR"/commands/*.md; do
+    [ -f "$cmd" ] || continue
+    cp "$cmd" "$dest_commands/" 2>/dev/null || true
+    count=$((count + 1))
+  done
+  log_ok "$count commands instalados em $dest_commands"
+}
+
+install_agents() {
+  local dest_agents="$HOME/.claude/agents"
+  local count=0
+
+  mkdir -p "$dest_agents"
+
+  for agent in "$SOURCE_DIR"/agents/*.md; do
+    [ -f "$agent" ] || continue
+    cp "$agent" "$dest_agents/" 2>/dev/null || true
+    count=$((count + 1))
+  done
+  log_ok "$count agents instalados em $dest_agents"
+}
+
 install_skills() {
   local dest_skills="$HOME/.claude/skills"
   local count=0
@@ -79,23 +107,7 @@ install_skills() {
     cp -R "$skill"/* "$dest_skills/$name/" 2>/dev/null || true
     count=$((count + 1))
   done
-  log_ok "$count skills instaladas em $dest_skills (Claude Code)"
-
-  # Limpa commands legados (migrados para skills)
-  if [ -d "$HOME/.claude/commands" ]; then
-    local legacy_count=0
-    for cmd in "$HOME/.claude/commands"/*.md; do
-      [ -f "$cmd" ] || continue
-      local cmd_name=$(basename "$cmd" .md)
-      if [ -d "$dest_skills/$cmd_name" ]; then
-        rm "$cmd"
-        legacy_count=$((legacy_count + 1))
-      fi
-    done
-    if [ "$legacy_count" -gt 0 ]; then
-      log_ok "$legacy_count commands legados removidos (migrados para skills)"
-    fi
-  fi
+  log_ok "$count skills instaladas em $dest_skills"
 
   # TODO: Multi-tool support (Copilot, Cursor, Gemini CLI, etc.)
   # Skills são acopladas ao Claude Code (MCPs, Agent, Skill, TaskCreate).
@@ -503,6 +515,8 @@ do_update() {
 
   # Copia novos arquivos
   SOURCE_DIR="$tmpdir"
+  install_commands
+  install_agents
   install_skills
 
   # Atualiza scripts e templates
@@ -546,7 +560,9 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════
 
 if [ "$MODE" = "skills" ]; then
-  echo -e "\n${BOLD}${CYAN}AI Engineer — Instalação de Skills${NC}\n"
+  echo -e "\n${BOLD}${CYAN}AI Engineer — Instalação${NC}\n"
+  install_commands
+  install_agents
   install_skills
   save_version
   echo -e "\n${GREEN}Concluído.${NC}\n"
@@ -648,8 +664,10 @@ setup_slack_mcp || true
 
 # ── Step 4: Skills e Commands ────────────────────────────────────────────────
 
-log_step 4 "Instalando skills"
+log_step 4 "Instalando commands, agents e skills"
 
+install_commands
+install_agents
 install_skills
 
 # Copia scripts, configs e templates para INSTALL_DIR
