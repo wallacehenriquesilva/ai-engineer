@@ -1,105 +1,96 @@
----
-description: >
-  Executa o ciclo completo de desenvolvimento de forma autônoma:
-  implementa a task, resolve comentários de revisão e finaliza com deploy.
-  Invoca engineer → pr-resolve → finalize em sequência.
-  Uso: /run
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
-  - Grep
-  - Glob
-  - Agent
-  - Skill
-  - TaskCreate
-  - TaskUpdate
-  - mcp__mcp-atlassian__jira_*
-  - mcp__github__*
----
+# /run
 
-# run: Ciclo Completo Autônomo
+Ciclo completo autonomo: implementa → resolve reviews → deploy.
 
-Executa o ciclo completo de desenvolvimento sem intervenção manual.
-Cada fase depende do sucesso da anterior — se uma falhar, o ciclo encerra.
+## REGRAS ABSOLUTAS
+
+1. **Voce NAO busca tasks no Jira.** O @orchestrator faz isso.
+2. **Voce NAO avalia clareza.** O @orchestrator faz isso.
+3. **Voce NAO le ou escreve codigo.** Os sub-agents fazem isso.
+4. **Voce NAO resolve comentarios.** O @pr-resolver faz isso.
+5. **Voce NAO faz deploy.** O @finalizer faz isso.
+6. **Voce APENAS spawna agents em sequencia e le retornos JSON.**
 
 ---
 
-## Fase 1 — Implementação
+## Fase 1 — Implementar
 
-Invoque o command `/engineer` e aguarde a conclusão.
+Spawne o sub-agent `orchestrator`:
 
-O `/engineer` irá:
-- Buscar a próxima task disponível
-- Avaliar clareza
-- Implementar, testar e abrir a PR
-- Acionar o CI e aguardar o SonarQube
-- Mover a task para `Em Revisão`
+```
+Agent(
+  prompt: "Leia e siga ~/.claude/agents/orchestrator.md.
+           Diretorio de trabalho: <PWD>.
+           Retorne o JSON estruturado.",
+  subagent_type: "general-purpose",
+  model: "opus"
+)
+```
 
-Ao final, capture a **PR-URL** retornada pelo `/engineer` no resumo da Etapa 14.
+Capture: task_id, pr_url, worktree_path.
 
-### Se `/engineer` encerrar sem PR aberta:
-- Task não encontrada → encerre com: **"Nenhuma task disponível. Ciclo encerrado."**
-- Task sem clareza → encerre com: **"Task comentada com perguntas. Ciclo encerrado até ajuste."**
-- Falha irrecuperável → encerre com o motivo reportado pelo `/engineer`.
+- `status: "no_task"` → encerre: "Nenhuma task disponivel."
+- `status: "needs_clarity"` → encerre: "Task comentada. Aguardando resposta."
+- `status: "failed"` → encerre com erro.
+- `status: "success"` → prossiga.
 
----
+Persista o handoff:
 
-## Fase 2 — Revisão
-
-Com a `<PR-URL>` obtida na Fase 1, invoque `/pr-resolve <PR-URL>` e aguarde a conclusão.
-
-O `/pr-resolve` irá:
-- Monitorar a PR aguardando comentários ou aprovação do time
-- Resolver comentários, responder dúvidas e pedir clareza quando necessário
-- Rodar o CI novamente após cada push
-- Aguardar aprovação final
-
-### Se `/pr-resolve` encerrar sem aprovação:
-- Timeout de 24h sem feedback → encerre com: **"PR sem revisão em 24h. Intervenção manual necessária."**
-- Falha de CI irrecuperável → encerre com o motivo reportado.
+```bash
+source ~/.ai-engineer/scripts/execution-log.sh
+exec_handoff_save "$TASK_ID" "orchestrator" "pr-resolver" \
+  "pr_url=$PR_URL" "worktree=$WORKTREE_PATH"
+```
 
 ---
 
-## Fase 3 — Finalização
+## Fase 2 — Resolver Reviews
 
-Com a `<PR-URL>` aprovada, invoque `/finalize <PR-URL>` e aguarde a conclusão.
+Spawne o sub-agent `pr-resolver`:
 
-O `/finalize` irá:
-- Validar aprovação
-- Fazer deploy em sandbox e homolog
-- Gerar evidências de funcionamento
-- Atualizar o Jira e fazer o merge
-- Acompanhar o deploy em produção
+```
+Agent(
+  prompt: "Leia e siga ~/.claude/agents/pr-resolver.md.
+           PR: <PR_URL>
+           Task: <TASK_ID>
+           Worktree: <WORKTREE_PATH>
+           Retorne o JSON estruturado.",
+  subagent_type: "general-purpose",
+  model: "opus"
+)
+```
 
-### Se `/finalize` falhar:
-- Encerre com o motivo reportado e a orientação de intervenção manual.
+- `status: "approved"` → prossiga.
+- `status: "timeout"` → encerre: "PR sem revisao em 24h."
+- `status: "failed"` → encerre com erro.
+
+---
+
+## Fase 3 — Deploy
+
+Spawne o sub-agent `finalizer`:
+
+```
+Agent(
+  prompt: "Leia e siga ~/.claude/agents/finalizer.md.
+           PR: <PR_URL>
+           Task: <TASK_ID>
+           Retorne o JSON estruturado.",
+  subagent_type: "general-purpose",
+  model: "sonnet"
+)
+```
 
 ---
 
 ## Resumo Final
 
-Ao concluir com sucesso todas as fases, exiba:
-
+Exiba:
 ```
-## ✅ Ciclo completo concluído
-
-- **Task:** <KEY> — <summary>
-- **PR:** <PR-URL> (merged)
-- **Sandbox:** ✅
-- **Homolog:** ✅
-- **Produção:** ✅
-- **Status Jira:** Done
-
-Duração total: <tempo desde o início>
+Task: <task_id> — <summary>
+PR: <pr_url> (merged)
+Deploy: producao OK
+Jira: Done
 ```
 
----
-
-## Regras
-
-- Nunca pule uma fase — cada uma depende da anterior.
-- Preserve o estado entre fases (especialmente a PR-URL).
-- Em caso de falha em qualquer fase, encerre com clareza e não tente continuar.
-- Os commands individuais (/engineer, /pr-resolve, /finalize) continuam disponíveis para execução isolada.
+$ARGUMENTS
