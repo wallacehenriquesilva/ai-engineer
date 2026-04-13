@@ -7,6 +7,7 @@
 #   ./scripts/run-loop.sh --interval 10    # intervalo de 10 min
 #   ./scripts/run-loop.sh --max 5          # máximo 5 tasks
 #   ./scripts/run-loop.sh --command engineer  # roda /engineer em vez de /run
+#   ./scripts/run-loop.sh --timeout 20     # timeout por execução em minutos (padrão: 15)
 
 set -eo pipefail
 
@@ -14,6 +15,7 @@ INTERVAL=300
 MAX_TASKS=0
 COMMAND="/run"
 WORK_DIR="${WORK_DIR:-$(pwd)}"
+TIMEOUT_SECS=900  # 15 min por execução
 
 while [ $# -gt 0 ]; do
   case $1 in
@@ -21,6 +23,7 @@ while [ $# -gt 0 ]; do
     --max)      MAX_TASKS="$2";          shift 2 ;;
     --command)  COMMAND="/$2";           shift 2 ;;
     --dir)      WORK_DIR="$2";           shift 2 ;;
+    --timeout)  TIMEOUT_SECS=$(( $2 * 60 )); shift 2 ;;
     *) shift ;;
   esac
 done
@@ -33,6 +36,7 @@ echo -e "${CYAN}═════════════════════�
 echo ""
 echo -e "  Comando:   ${CYAN}$COMMAND${NC}"
 echo -e "  Intervalo: ${CYAN}$((INTERVAL / 60)) min${NC}"
+echo -e "  Timeout:   ${CYAN}$((TIMEOUT_SECS / 60)) min/execução${NC}"
 echo -e "  Máximo:    ${CYAN}$([ "$MAX_TASKS" -gt 0 ] && echo "$MAX_TASKS tasks" || echo "infinito")${NC}"
 echo -e "  Diretório: ${CYAN}$WORK_DIR${NC}"
 echo ""
@@ -52,11 +56,13 @@ while true; do
   echo -e "${CYAN}[$(date +%H:%M:%S)] Execução #$TASK_COUNT${NC}"
 
   cd "$WORK_DIR"
-  claude --print "$COMMAND" 2>&1 || true
+  timeout "$TIMEOUT_SECS" claude --print "$COMMAND" 2>&1 || true
 
   EXIT_CODE=$?
 
-  if [ $EXIT_CODE -ne 0 ]; then
+  if [ $EXIT_CODE -eq 124 ]; then
+    echo -e "${RED}[$(date +%H:%M:%S)] Execução #$TASK_COUNT: TIMEOUT após $((TIMEOUT_SECS / 60))min — run travada, continuando${NC}"
+  elif [ $EXIT_CODE -ne 0 ]; then
     echo -e "${RED}[$(date +%H:%M:%S)] Execução #$TASK_COUNT falhou (exit: $EXIT_CODE)${NC}"
   else
     echo -e "${GREEN}[$(date +%H:%M:%S)] Execução #$TASK_COUNT concluída${NC}"

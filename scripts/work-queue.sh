@@ -186,10 +186,10 @@ wq_get_pr() {
 # ── Listar items por status ─────────────────────────────────────────────────
 
 wq_list() {
-  local status="${1:-}"
+  local filter_status="${1:-}"
 
-  if [ -n "$status" ]; then
-    sqlite3 -json "$WQ_DB" "SELECT * FROM work_items WHERE status='$status' ORDER BY priority DESC, updated_at ASC;"
+  if [ -n "$filter_status" ]; then
+    sqlite3 -json "$WQ_DB" "SELECT * FROM work_items WHERE status='$filter_status' ORDER BY priority DESC, updated_at ASC;"
   else
     sqlite3 -json "$WQ_DB" "SELECT * FROM work_items WHERE status NOT IN ('done', 'failed') ORDER BY priority DESC, updated_at ASC;"
   fi
@@ -334,32 +334,46 @@ wq_poll_prs() {
       continue
     fi
 
-    # Verificar comentários novos (gerais + inline review comments)
-    local sonar_bot="${SONAR_BOT:-sonarqube-v2-contaazul}"
-    local last_updated
-    last_updated=$(sqlite3 "$WQ_DB" "SELECT updated_at FROM work_items WHERE task_id='$task_id' AND repo='$repo';")
-
-    # Comentários gerais da PR
-    local recent_comments
-    recent_comments=$(gh pr view "$pr_url" --json comments \
-      --jq '[.comments[] | {login: .author.login, date: .createdAt}]' 2>/dev/null \
-      | jq --arg bot "$sonar_bot" --arg since "$last_updated" \
-        '[.[] | select(.login != $bot and .date > $since)] | length' 2>/dev/null || echo "0")
-
-    # Review comments inline (em linhas de código)
+    # Extrair pr_number e repo_full (necessarios para GraphQL)
     local pr_number repo_full
     pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
     repo_full=$(echo "$pr_url" | grep -oE '[^/]+/[^/]+/pull' | sed 's|/pull||')
-    local recent_review_comments="0"
+
+    # Verificar review threads nao resolvidas via GraphQL
+    # Nao filtra por data — verifica estado atual das threads
+    local unresolved_threads="0"
     if [ -n "$pr_number" ] && [ -n "$repo_full" ]; then
-      recent_review_comments=$(gh api "/repos/$repo_full/pulls/$pr_number/comments" \
-        --jq '[.[] | .created_at]' 2>/dev/null \
-        | jq --arg since "$last_updated" '[.[] | select(. > $since)] | length' 2>/dev/null || echo "0")
+      local owner repo_name
+      owner=$(echo "$repo_full" | cut -d'/' -f1)
+      repo_name=$(echo "$repo_full" | cut -d'/' -f2)
+
+      unresolved_threads=$(gh api graphql -f query='
+        query($owner: String!, $repo: String!, $pr: Int!) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $pr) {
+              reviewThreads(first: 100) {
+                nodes {
+                  isResolved
+                }
+              }
+            }
+          }
+        }' -f owner="$owner" -f repo="$repo_name" -F pr="$pr_number" \
+        --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length' 2>/dev/null || echo "0")
     fi
 
-    local total_new=$(( ${recent_comments:-0} + ${recent_review_comments:-0} ))
-    if [ "$total_new" -gt 0 ] 2>/dev/null; then
-      wq_update_pr "$task_id" "$repo" "has_feedback" "$total_new novos comentários"
+    if [ "${unresolved_threads:-0}" -gt 0 ] 2>/dev/null; then
+      wq_update_pr "$task_id" "$repo" "has_feedback" "$unresolved_threads threads nao resolvidas"
+      continue
+    fi
+
+    # Verificar comentarios simples (issue comments) de qualquer pessoa
+    local simple_comments
+    simple_comments=$(gh pr view "$pr_url" --json comments \
+      --jq "[.comments[] | select(.author.login != \"github-actions\")] | length" 2>/dev/null || echo "0")
+
+    if [ "${simple_comments:-0}" -gt 0 ] 2>/dev/null; then
+      wq_update_pr "$task_id" "$repo" "has_feedback" "$simple_comments comentarios simples"
       continue
     fi
 
