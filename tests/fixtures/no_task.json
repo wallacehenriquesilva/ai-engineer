@@ -1,0 +1,12 @@
+{
+  "description": "task-fetcher retorna no_task — pipeline deve encerrar imediatamente",
+  "mock_responses": {
+    "task_fetcher": {"status": "no_task"}
+  },
+  "expected": {
+    "final_status": "no_task",
+    "jira_comment": false,
+    "pr_created": false,
+    "engineer_retries": 0
+  }
+}

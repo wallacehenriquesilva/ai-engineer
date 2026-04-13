@@ -1,0 +1,19 @@
+{
+  "description": "Task com score de clareza 8/18 — pipeline comenta no Jira e encerra",
+  "mock_responses": {
+    "task_fetcher": {
+      "status": "success",
+      "task_id": "AZUL-9999",
+      "task_summary": "Fazer algo vago",
+      "repo_name": "martech-worker",
+      "repo_type": "go"
+    },
+    "clarity_score": 8
+  },
+  "expected": {
+    "final_status": "needs_clarity",
+    "jira_comment": true,
+    "pr_created": false,
+    "engineer_retries": 0
+  }
+}

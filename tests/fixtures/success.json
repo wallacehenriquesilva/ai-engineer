@@ -1,0 +1,21 @@
+{
+  "description": "Fluxo completo sem falhas — PR criada",
+  "mock_responses": {
+    "task_fetcher": {
+      "status": "success",
+      "task_id": "AZUL-1234",
+      "task_summary": "Adicionar campo X ao consumer Y",
+      "repo_name": "martech-worker",
+      "repo_type": "go"
+    },
+    "clarity_score": 16,
+    "tester_pass": true,
+    "evaluator_verdicts": ["PASS"]
+  },
+  "expected": {
+    "final_status": "success",
+    "jira_comment": false,
+    "pr_created": true,
+    "engineer_retries": 0
+  }
+}

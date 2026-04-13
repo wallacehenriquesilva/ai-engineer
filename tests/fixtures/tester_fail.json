@@ -1,0 +1,21 @@
+{
+  "description": "Tester falha na 1ª tentativa — engineer recebe feedback e retenta",
+  "mock_responses": {
+    "task_fetcher": {
+      "status": "success",
+      "task_id": "AZUL-5680",
+      "task_summary": "Implementar consumer SQS",
+      "repo_name": "martech-worker",
+      "repo_type": "go"
+    },
+    "clarity_score": 16,
+    "tester_pass": false,
+    "evaluator_verdicts": ["PASS"]
+  },
+  "expected": {
+    "final_status": "success",
+    "jira_comment": false,
+    "pr_created": true,
+    "engineer_retries": 1
+  }
+}

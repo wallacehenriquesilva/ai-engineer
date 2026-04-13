@@ -1,0 +1,21 @@
+{
+  "description": "Evaluator FAIL em ambos os ciclos — pipeline encerra com falha",
+  "mock_responses": {
+    "task_fetcher": {
+      "status": "success",
+      "task_id": "AZUL-5679",
+      "task_summary": "Feature complexa",
+      "repo_name": "martech-worker",
+      "repo_type": "go"
+    },
+    "clarity_score": 16,
+    "tester_pass": true,
+    "evaluator_verdicts": ["FAIL", "FAIL"]
+  },
+  "expected": {
+    "final_status": "failed",
+    "jira_comment": false,
+    "pr_created": false,
+    "engineer_retries": 1
+  }
+}

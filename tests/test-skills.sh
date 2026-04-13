@@ -321,9 +321,9 @@ echo ""
 
 echo "7. Validando handoff templates..."
 
-HANDOFF_DIR="$ROOT_DIR/skills/run/templates"
+HANDOFF_DIR="$ROOT_DIR/docs/templates"
 if [ -d "$HANDOFF_DIR" ]; then
-  pass "run/templates/ existe"
+  pass "docs/templates/ existe"
 
   for template in engineer-to-pr-resolve.md pr-resolve-to-finalize.md escalation.md; do
     if [ -f "$HANDOFF_DIR/$template" ]; then
@@ -333,7 +333,7 @@ if [ -d "$HANDOFF_DIR" ]; then
     fi
   done
 else
-  fail "skills/run/templates/ não encontrado"
+  fail "docs/templates/ não encontrado"
 fi
 
 echo ""
