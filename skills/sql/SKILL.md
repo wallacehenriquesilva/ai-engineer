@@ -51,8 +51,6 @@ Consulte a referencia do banco utilizado no projeto para padroes especificos:
 
 - [PostgreSQL](references/postgresql.md) — CTEs, window functions, JSONB, array types, indices parciais, CREATE INDEX CONCURRENTLY, pg_repack, advisory locks, tipos de dados, niveis de isolamento e anti-patterns especificos.
 
-> **Nota:** a maioria dos projetos Conta Azul usa PostgreSQL. Quando nao houver referencia especifica para o banco detectado, aplique os padroes genericos desta skill.
-
 ---
 
 ## 1. Prevencao de SQL Injection

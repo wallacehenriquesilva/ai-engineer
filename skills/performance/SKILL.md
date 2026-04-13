@@ -327,16 +327,7 @@ Operacoes que nao precisam de resposta imediata devem ir para background:
 - Integracao com sistemas externos
 - Atualizacao de caches pesados
 
-### 10.2 Padrao na Conta Azul
-
-Use SNS/SQS para desacoplar:
-1. Servico A publica evento no SNS.
-2. SQS subscreve o topico.
-3. Worker consome e processa de forma assincrona.
-
-Beneficios: retry automatico, dead-letter queue, backpressure natural.
-
-### 10.3 Timeout e Circuit Breaker
+### 10.2 Timeout e Circuit Breaker
 
 - Sempre defina timeouts em chamadas externas (HTTP, DB, Redis).
 - Use circuit breaker para evitar cascata de falhas.

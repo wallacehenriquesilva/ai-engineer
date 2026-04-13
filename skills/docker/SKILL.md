@@ -386,7 +386,7 @@ deploy:
       cpus: "0.25"
 ```
 
-Em Kubernetes (contexto Conta Azul):
+Em Kubernetes:
 
 ```yaml
 resources:

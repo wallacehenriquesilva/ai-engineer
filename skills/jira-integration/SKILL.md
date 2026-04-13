@@ -63,17 +63,29 @@ Se não houver sprint ativa, encerre com: **"Nenhuma sprint ativa encontrada no 
 
 ### A2. Listar tasks disponíveis
 
-Use `jira_search_issues` com o JQL:
+Execute **duas** buscas: tasks diretas + subtasks.
+
+**Busca 1 — Tasks diretas na sprint:**
 
 ```
 sprint = <sprintId> AND status in ("To Do", "A Fazer") AND labels = "<AI_LABEL>" AND flagged is EMPTY ORDER BY priority DESC, created ASC
 ```
 
-Campos obrigatórios: `summary`, `description`, `customfield_13749`, `labels`, `issuelinks`, `subtasks`, `status`, `priority`, `assignee`, `flagged`.
+**Busca 2 — Subtasks (nao tem campo sprint diretamente):**
+
+```
+issuetype in (Sub-task, Subtarefa) AND status in ("To Do", "A Fazer") AND labels = "<AI_LABEL>" AND flagged is EMPTY AND parent in (sprint = <sprintId>) ORDER BY priority DESC, created ASC
+```
+
+Se o JQL de subtasks falhar, busque sem `parent in` e filtre manualmente: verifique se o `parent` de cada subtask esta na sprint ativa.
+
+Junte os resultados das duas buscas numa lista unica, ordenada por prioridade.
+
+Campos obrigatórios: `summary`, `description`, `customfield_13749`, `labels`, `issuelinks`, `subtasks`, `status`, `priority`, `assignee`, `flagged`, `parent`.
 
 **Nota:** `flagged is EMPTY` exclui tasks com marcador/impedimento (flag do Jira). Tasks flagadas indicam impedimento humano e NÃO devem ser puxadas pelo agente.
 
-Se nenhuma issue for retornada, encerre com: **"Nenhuma task com label AI disponível na sprint atual."**
+Se nenhuma issue for retornada em ambas as buscas, encerre com: **"Nenhuma task com label AI disponível na sprint atual."**
 
 **PROIBIDO:** NÃO busque no backlog, NÃO remova o filtro de sprint, NÃO amplie a busca, NÃO tente outros status. Se não há tasks em "To Do"/"A Fazer" na sprint ativa, o resultado correto é ZERO tasks. Encerre sem tentar alternativas.
 

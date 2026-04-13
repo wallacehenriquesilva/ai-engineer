@@ -2,10 +2,10 @@
 name: git-workflow
 version: 1.1.0
 description: >
-  Gerencia o fluxo Git completo para implementação de tasks: criação de worktree, branch,
-  commits semânticos atômicos, abertura de PR e monitoramento de CI.
-  Acione esta skill quando precisar criar uma branch, fazer commits, abrir PR,
-  ou acompanhar o resultado dos testes de CI de uma pull request.
+  Define os padrões e mecânicas de operações git: worktree, branch, commits semânticos,
+  push, PR e monitoramento de CI. Esta skill é a fonte de verdade dos padrões git do time.
+  A orquestração do fluxo (quando chamar cada etapa) é responsabilidade do pr-manager.
+  Atualizações de Jira são responsabilidade do orchestrator — fora do escopo desta skill.
 depends-on: []
 triggers:
   - called-by: engineer
@@ -19,14 +19,13 @@ allowed-tools:
   - Write
   - Glob
   - Grep
-  - mcp__mcp-atlassian__jira_get_issue_transitions
-  - mcp__mcp-atlassian__jira_transition_issue
-  - mcp__mcp-atlassian__jira_add_comment
 ---
 
 # Git Workflow
 
-Gerencia o ciclo completo de versionamento para uma task, desde o worktree até a PR aprovada pelo CI.
+Define os padrões de versionamento para tasks: worktree, commits semânticos, PR e CI.
+
+> **Escopo:** esta skill cobre apenas operações git. Atualizações de Jira (transições, comentários com link da PR) são feitas pelo **orchestrator** — não repita essa lógica aqui. A orquestração do fluxo completo (quando chamar cada etapa) é responsabilidade do **pr-manager**.
 
 ## 1. Criar Worktree e Branch
 
@@ -161,15 +160,15 @@ O título da PR deve ser em inglês. O body (descrição) deve ser em **PT-BR**.
 
 | Label | Critério |
 |---|---|
-| `ai-first` | **Todos** os commits têm `Co-Authored-By: Claude`. Código 100% gerado por AI — o dev revisou e aprovou, mas não escreveu código. |
-| `ai-assisted` | **Alguns** commits têm `Co-Authored-By: Claude`. Dev e AI trabalharam juntos — parte escrita pelo dev, parte pela AI. |
-| `ai-none` | **Nenhum** commit tem `Co-Authored-By: Claude`. Código 100% escrito pelo dev. |
+| `ai-first` | **Todos** os commits têm `Co-Authored-By: Claude` ou `Co-Authored-By: Copilot`. Código 100% gerado por AI — o dev revisou e aprovou, mas não escreveu código. |
+| `ai-assisted` | **Alguns** commits têm co-author AI. Dev e AI trabalharam juntos — parte escrita pelo dev, parte pela AI. |
+| `ai-none` | **Nenhum** commit tem co-author AI. Código 100% escrito pelo dev. |
 
 Para determinar a label, verifique os commits da branch:
 
 ```bash
 TOTAL=$(git log "$BASE_BRANCH"..HEAD --oneline | wc -l | tr -d ' ')
-AI_COMMITS=$(git log "$BASE_BRANCH"..HEAD --grep="Co-Authored-By: Claude" --oneline | wc -l | tr -d ' ')
+AI_COMMITS=$(git log "$BASE_BRANCH"..HEAD --grep="Co-Authored-By: Claude" --grep="Co-Authored-By: Copilot" --oneline | wc -l | tr -d ' ')
 
 if [ "$AI_COMMITS" -eq 0 ]; then
   AI_LABEL="ai-none"
@@ -263,22 +262,7 @@ Retorne a URL da PR e encerre.
 
 > Tente corrigir no máximo **2 vezes**. Se o erro persistir após a segunda tentativa, informe o erro no terminal e retorne a URL da PR sem bloquear.
 
----
-
-## 5. Atualizar Jira
-
-Após a PR estar aberta e com CI verde (ou após as 2 tentativas):
-
-1. Mova a task para `Revisao` usando `jira_get_issue_transitions` + `jira_transition_issue`.
-2. Poste o link da PR como comentário na task usando `jira_add_comment`:
-
-```
-PR aberta: <PR-URL>
-```
-
----
-
-## 6. Limpeza do Worktree
+## 5. Limpeza do Worktree
 
 Após a PR ser mergeada, remova o worktree para manter o ambiente limpo:
 

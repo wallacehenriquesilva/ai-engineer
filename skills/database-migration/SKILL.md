@@ -403,7 +403,7 @@ WHERE NOT blocked_locks.granted;
 
 ### 9.1 golang-migrate (Go)
 
-Padrao para servicos Go na Conta Azul:
+Padrao para servicos Go:
 
 ```
 migrations/
