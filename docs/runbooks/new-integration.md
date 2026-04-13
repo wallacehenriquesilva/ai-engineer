@@ -58,7 +58,7 @@ Se multi-repo → use `engineer-multi` ou implemente em ordem: **infra primeiro,
 ```hcl
 # Exemplo: novo SQS consumer
 module "sqs_new_event" {
-  source = "github.com/ContaAzul/terraform-modules//sqs"
+  source = "github.com/your-org/terraform-modules//sqs"
   name   = "<service>-<event-name>"
   # ...
 }
